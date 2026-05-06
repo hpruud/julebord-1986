@@ -1,4 +1,4 @@
-# Julebord 2026 MegaDemo
+# Academy - Julebord 2026 Demo
 
 A browser-native Christmas demo in the spirit of late-80s / early-90s Amiga 500 demoscene productions, by **Julebord 2026**. Pure HTML + ES modules + WebGL2. No build step. No audio. No external assets. Just pixels, copper bars, and snow.
 
