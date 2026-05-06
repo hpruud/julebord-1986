@@ -1,0 +1,26 @@
+// Demo timeline: part order, durations, transitions.
+// Edit this file to reorder/retime/skip parts.
+export const TIMELINE = {
+  parts: [
+    { id: 'intro_logo',     dur: 6000,  transitionIn: 'fade',  transitionOut: 'flash' },
+    { id: 'starfield',      dur: 14000, transitionIn: 'fade',  transitionOut: 'wipe'  },
+    { id: 'copperbars',     dur: 16000, transitionIn: 'wipe',  transitionOut: 'flash' },
+    { id: 'plasma',         dur: 14000, transitionIn: 'fade',  transitionOut: 'tear'  },
+    { id: 'bobs',           dur: 14000, transitionIn: 'tear',  transitionOut: 'flash' },
+    { id: 'fire',           dur: 14000, transitionIn: 'fade',  transitionOut: 'wipe'  },
+    { id: 'bobsfire',       dur: 14000, transitionIn: 'fade',  transitionOut: 'flash' },
+    { id: 'rotozoom',       dur: 16000, transitionIn: 'wipe',  transitionOut: 'flash' },
+    { id: 'mandel',         dur: 22000, transitionIn: 'fade',  transitionOut: 'fade'  },
+    { id: 'glenz',          dur: 16000, transitionIn: 'wipe',  transitionOut: 'flash' },
+    { id: 'glenz4',         dur: 16000, transitionIn: 'wipe',  transitionOut: 'flash' },
+    { id: 'mandel_deep',    dur: 16000, transitionIn: 'fade',  transitionOut: 'fade'  },
+	{ id: 'academy_techtech', dur: 12000, transitionIn: 'flash', transitionOut: 'fade' },
+    { id: 'julia',          dur: 16000, transitionIn: 'fade',  transitionOut: 'flash' },
+    { id: 'greetzscroller', dur: 36000, transitionIn: 'fade',  transitionOut: 'fade'  },
+	{ id: 'tunnel',         dur: 16000, transitionIn: 'fade',  transitionOut: 'flash' },
+    { id: 'sinescroller',   dur: 42000, transitionIn: 'fade',  transitionOut: 'fade'  },
+    { id: 'vectorcube',     dur: 16000, transitionIn: 'fade',  transitionOut: 'wipe'  },
+    { id: 'battle',         dur: 18000, transitionIn: 'fade',  transitionOut: 'fade'  },
+    { id: 'outro_credits',  dur: 13000, transitionIn: 'fade',  transitionOut: 'fade'  },
+  ],
+};

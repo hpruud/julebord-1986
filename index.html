@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ACADEMY - JULEBORD 1986 DEMO</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      color: #ccc;
+      font-family: monospace;
+      overflow: hidden;
+      height: 100%;
+      width: 100%;
+    }
+    #stage {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: #000;
+    }
+    canvas {
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      background: #000;
+      width: 100vw;
+      height: 100vh;
+      object-fit: contain;
+      display: block;
+    }
+    #boot {
+      position: fixed;
+      inset: 0;
+      display: grid;
+      place-items: center;
+      background: #000;
+      color: #ddd;
+      cursor: pointer;
+      z-index: 10;
+      user-select: none;
+    }
+    #boot .inner {
+      text-align: center;
+      letter-spacing: 2px;
+    }
+    #boot h1 {
+      font-size: 36px;
+      margin: 0 0 12px 0;
+      color: #ff4d4d;
+      text-shadow: 2px 2px 0 #1a6b1a;
+    }
+    #boot h2 {
+      font-size: 18px;
+      margin: 0 0 18px 0;
+      color: #cfa657;
+      letter-spacing: 3px;
+    }
+    #boot p { margin: 6px 0; font-size: 14px; }
+    #boot small { color: #888; }
+    #hint {
+      position: fixed;
+      right: 8px;
+      bottom: 6px;
+      font-size: 11px;
+      color: #555;
+      z-index: 5;
+      pointer-events: none;
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage">
+    <canvas id="cv" width="320" height="256"></canvas>
+  </div>
+  <div id="boot">
+    <div class="inner">
+      <h1>JULEBORD 1986 DEMO</h1>
+      <h2>ACADEMY (c) 2026</h2>
+      <p style="margin-top:24px;">Click anywhere to start...</p>
+      <small>SPACE skip part &middot; P pause &middot; M mute &middot; F fullscreen &middot; ESC exit &middot; C toggle CRT</small>
+    </div>
+  </div>
+  <div id="hint">SPACE skip &middot; P pause &middot; M mute &middot; F fullscreen &middot; C CRT</div>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

@@ -1,0 +1,19 @@
+# Dev screenshots from chrome-devtools verification runs
+_shots/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# Logs
+*.log
+
+# Node (if you ever add tooling)
+node_modules/
