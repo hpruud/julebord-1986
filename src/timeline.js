@@ -20,7 +20,7 @@ export const TIMELINE = {
 	{ id: 'tunnel',         dur: 16000, transitionIn: 'fade',  transitionOut: 'flash' },
     { id: 'sinescroller',   dur: 42000, transitionIn: 'fade',  transitionOut: 'fade'  },
     { id: 'vectorcube',     dur: 16000, transitionIn: 'fade',  transitionOut: 'wipe'  },
-    { id: 'battle',         dur: 18000, transitionIn: 'fade',  transitionOut: 'fade'  },
+    { id: 'battle',         dur: 23000, transitionIn: 'fade',  transitionOut: 'fade'  },
     { id: 'outro_credits',  dur: 13000, transitionIn: 'fade',  transitionOut: 'fade'  },
   ],
 };
