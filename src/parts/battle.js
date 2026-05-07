@@ -552,9 +552,18 @@ in vec2 a_pos;        // pixel coords (0..VW, 0..VH); y=0 is top
 in vec3 a_color;
 uniform vec2 u_offset;   // pixel offset applied to a_pos
 uniform vec2 u_screen;   // VW, VH
+// Rotation around a local pivot (used for the shootdown tumble). Pass
+// (cos, sin) in u_rot and the pivot in local-mesh coords in u_pivot.
+// For non-rotating draws (e.g. the 2D crash-particle batch), set
+// u_rot = (1, 0) and u_pivot = (0, 0) and the math becomes a no-op.
+uniform vec2 u_rot;      // (cos a, sin a)
+uniform vec2 u_pivot;    // local pivot point
 out vec3 v_color;
 void main() {
-  vec2 px = a_pos + u_offset;
+  vec2 p = a_pos - u_pivot;
+  vec2 r = vec2(p.x * u_rot.x - p.y * u_rot.y,
+                p.x * u_rot.y + p.y * u_rot.x);
+  vec2 px = r + u_pivot + u_offset;
   // Convert pixel coords to NDC. Do NOT flip Y here - the FBO-to-screen
   // blit applies a Y-flip on present, so emitting straight NDC puts
   // pixel y=0 at the top of the screen visually (same convention as
@@ -1768,6 +1777,8 @@ export function battle(gl) {
   const santaProg = compile(gl, SANTA_VS, SANTA_FS, ['a_pos','a_color']);
   const uOffsetSanta = gl.getUniformLocation(santaProg, 'u_offset');
   const uScreenSanta = gl.getUniformLocation(santaProg, 'u_screen');
+  const uRotSanta    = gl.getUniformLocation(santaProg, 'u_rot');
+  const uPivotSanta  = gl.getUniformLocation(santaProg, 'u_pivot');
   const obj2Prog = compile(gl, OBJ2_VS, OBJ2_FS, ['a_pos','a_normal','a_colorIdx']);
   const uMvpObj2     = gl.getUniformLocation(obj2Prog, 'u_mvp');
   const uModelObj2   = gl.getUniformLocation(obj2Prog, 'u_model');
@@ -1832,6 +1843,46 @@ export function battle(gl) {
   gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 5 * 4, 2 * 4);
   gl.bindVertexArray(null);
   const santaCount = santaData.length / 5;
+
+  // ----- Santa shootdown: 2D pixel-coord particle system -----
+  // Reuses the santaProg shader (a_pos vec2 + a_color vec3, stride 20 bytes)
+  // so each particle is a tiny rotated quad in absolute pixel coordinates.
+  // We don't need rotation for individual particles, so all draws use
+  // u_rot=(1,0)/u_pivot=(0,0). Allocated up-front (DYNAMIC_DRAW) and
+  // sub-buffered every frame from a JS-side particle list.
+  const MAX_SANTA_PARTICLES = 220;
+  const SANTA_PART_STRIDE = 5 * 4;       // matches santaProg vertex layout
+  const SANTA_PART_VERTS_PER = 6;        // 2 tris per quad
+  const santaPartVao = gl.createVertexArray();
+  const santaPartVbo = gl.createBuffer();
+  gl.bindVertexArray(santaPartVao);
+  gl.bindBuffer(gl.ARRAY_BUFFER, santaPartVbo);
+  gl.bufferData(gl.ARRAY_BUFFER,
+    MAX_SANTA_PARTICLES * SANTA_PART_VERTS_PER * SANTA_PART_STRIDE,
+    gl.DYNAMIC_DRAW);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, SANTA_PART_STRIDE, 0);
+  gl.enableVertexAttribArray(1);
+  gl.vertexAttribPointer(1, 3, gl.FLOAT, false, SANTA_PART_STRIDE, 2 * 4);
+  gl.bindVertexArray(null);
+  // Reusable scratch buffer big enough for all slots (max usage path).
+  const santaPartScratch = new Float32Array(
+    MAX_SANTA_PARTICLES * SANTA_PART_VERTS_PER * 5);
+
+  // Each particle:
+  //   x,y        : center in pixel coords (absolute, top-left origin)
+  //   vx,vy      : velocity in px/s
+  //   gx,gy      : gravity / acceleration in px/s^2
+  //   size       : half-extent in pixels (quad spans 2*size)
+  //   r,g,b      : RGB tint (alpha is implicit via shrinking size as it ages)
+  //   age,life   : seconds (age >= life => removed)
+  //   kind       : 'spark' (shrinks fast) | 'smoke' (grows + fades) |
+  //                'debris' (gravity, slow shrink) | 'fire' (fast bright)
+  const santaParticles = [];
+  function spawn2D(p) {
+    if (santaParticles.length >= MAX_SANTA_PARTICLES) santaParticles.shift();
+    santaParticles.push(p);
+  }
 
   // Ships
   const ships = {
@@ -2319,6 +2370,138 @@ export function battle(gl) {
     return m;
   }
 
+  // ----- Santa flight + shootdown state machine -----
+  // Santa loops across the sky every SANTA_PERIOD seconds. On each pass
+  // we randomly pick a moment (somewhere in the visible middle) where a
+  // stray laser bolt strikes him; he then tumbles out of the sky with a
+  // smoke trail and crashes into the trees with a fireball. After a
+  // recovery window the cycle resets and Santa is back, none the worse.
+  // (It's Christmas — he's immortal.)
+  const SANTA_PERIOD = 14.0;       // seconds for a full crossing
+  const SANTA_Y      = 28.0;       // pixel y from top of FB at flight altitude
+  const SANTA_PIVOT_X = 22.0;      // local-mesh center for tumble rotation
+  const SANTA_PIVOT_Y = 8.0;
+  const GROUND_Y     = VH - 40;    // approx tree-line on screen for crash test
+  // State: 'flying' = on the rail, 'falling' = post-hit physics-driven,
+  // 'gone' = invisible (post-crash, awaiting next cycle).
+  let santaState = 'flying';
+  let santaCycleId = -1;           // integer cycle counter; lets us detect resets
+  let santaHitFrac = 0;            // [0..1] cycle fraction at which we get shot
+  // While falling we integrate position/rotation ourselves instead of
+  // following the rail equation.
+  let santaFallX = 0, santaFallY = 0;
+  let santaFallVx = 0, santaFallVy = 0;
+  let santaRot = 0, santaRotV = 0; // tumble rotation
+  let santaSmokeAccum = 0;         // accumulator for smoke-trail emission timing
+  // Brief 2D shootdown beam, drawn as a screen-space colored line. Stored
+  // in pixel coords so it visually connects to Santa wherever he is.
+  let shootdownBeam = null;        // { x0,y0, x1,y1, t0, life } or null
+
+  // Pick a fresh hit moment for a new flight cycle. Keep the hit in the
+  // middle 50% of the visible window so the player sees Santa enter,
+  // get shot, then crash before the cycle ends.
+  function rollSantaHitFrac() {
+    return 0.30 + Math.random() * 0.30;  // 0.30 .. 0.60
+  }
+
+  // Spawn a small puff of smoke at a pixel coord. Used both for the
+  // initial hit burst and for the trail of smoke that follows the falling
+  // sleigh. Color is biased dark gray with a subtle warm tint.
+  function spawnSmokePuff(x, y, intensity = 1.0) {
+    const ang = Math.random() * Math.PI * 2;
+    const sp = (10 + Math.random() * 18) * intensity;
+    spawn2D({
+      x, y,
+      vx: Math.cos(ang) * sp * 0.4,
+      vy: Math.sin(ang) * sp * 0.4 - 8,        // slight upward drift
+      gx: 0, gy: -2,                            // smoke rises a bit
+      size: 3 + Math.random() * 2,
+      r: 0.55 + Math.random() * 0.10,
+      g: 0.50 + Math.random() * 0.08,
+      b: 0.48 + Math.random() * 0.08,
+      age: 0,
+      life: 0.9 + Math.random() * 0.5,
+      kind: 'smoke',
+    });
+  }
+
+  // Spawn a hot orange spark at a pixel coord.
+  function spawnSpark(x, y, intensity = 1.0) {
+    const ang = Math.random() * Math.PI * 2;
+    const sp = (60 + Math.random() * 120) * intensity;
+    spawn2D({
+      x, y,
+      vx: Math.cos(ang) * sp,
+      vy: Math.sin(ang) * sp - 30,
+      gx: 0, gy: 220,                          // sparks fall back down
+      size: 1 + Math.random(),
+      r: 1.0,
+      g: 0.7 + Math.random() * 0.2,
+      b: 0.15 + Math.random() * 0.15,
+      age: 0,
+      life: 0.35 + Math.random() * 0.25,
+      kind: 'spark',
+    });
+  }
+
+  // Spawn a fireball flake (yellow->red fade by life via per-frame color
+  // remap in the upload step). Fast, additive-feeling but rendered with
+  // alpha blend for simplicity.
+  function spawnFire(x, y, intensity = 1.0) {
+    const ang = Math.random() * Math.PI * 2;
+    const sp = (30 + Math.random() * 50) * intensity;
+    spawn2D({
+      x, y,
+      vx: Math.cos(ang) * sp,
+      vy: Math.sin(ang) * sp - 10,
+      gx: 0, gy: 30,
+      size: 2 + Math.random() * 2,
+      r: 1.0, g: 0.95, b: 0.55,
+      age: 0,
+      life: 0.40 + Math.random() * 0.20,
+      kind: 'fire',
+    });
+  }
+
+  // Spawn a small flying debris fragment (sleigh splinter / hat / boot)
+  // in a tiny range of warm colors so the crash scatter has variety.
+  function spawnDebris(x, y, intensity = 1.0) {
+    const ang = Math.random() * Math.PI * 2;
+    const sp = (50 + Math.random() * 90) * intensity;
+    // 60% red (sleigh/coat), 25% brown (sled wood), 15% white (beard/trim)
+    const r = Math.random();
+    let cr, cg, cb;
+    if (r < 0.60) { cr = 0.72; cg = 0.10; cb = 0.10; }       // red
+    else if (r < 0.85) { cr = 0.45; cg = 0.28; cb = 0.10; }  // brown
+    else { cr = 0.95; cg = 0.95; cb = 0.95; }                // white
+    spawn2D({
+      x, y,
+      vx: Math.cos(ang) * sp,
+      vy: Math.sin(ang) * sp - 60,             // throw upward
+      gx: 0, gy: 260,
+      size: 1 + Math.random() * 1.5,
+      r: cr, g: cg, b: cb,
+      age: 0,
+      life: 0.8 + Math.random() * 0.6,
+      kind: 'debris',
+    });
+  }
+
+  // Big crash burst: ground-impact fireball + sparks + debris fan + smoke.
+  function spawnCrashBurst(x, y) {
+    for (let i = 0; i < 18; i++) spawnFire(x, y, 1.0);
+    for (let i = 0; i < 32; i++) spawnSpark(x, y, 1.0);
+    for (let i = 0; i < 20; i++) spawnDebris(x, y, 1.0);
+    for (let i = 0; i < 10; i++) spawnSmokePuff(x, y, 1.4);
+  }
+
+  // Hit burst: smaller, biased upward (he's still in the air).
+  function spawnHitBurst(x, y) {
+    for (let i = 0; i < 6; i++) spawnFire(x, y, 0.8);
+    for (let i = 0; i < 14; i++) spawnSpark(x, y, 0.8);
+    for (let i = 0; i < 4; i++) spawnSmokePuff(x, y, 1.0);
+  }
+
   return {
     render(gl, t, fbo) {
       bindFBO(gl, fbo);
@@ -2373,23 +2556,117 @@ export function battle(gl) {
       // (which all draw with proper depth) since they're behind. We disable
       // depth-test for this pass so it always draws on top of the sky.
       // Disabling depth also avoids interfering with subsequent ship draws.
+      //
+      // Drive the shootdown state machine here (cycle reset -> hit -> fall
+      // -> crash -> gone), then render the team unless we're in the 'gone'
+      // window after a crash.
       gl.disable(gl.DEPTH_TEST);
-      gl.useProgram(santaProg);
-      gl.uniform2f(uScreenSanta, VW, VH);
-      // Animate horizontal position: enter from left -8 px and exit at the
-      // right (VW + 80). Loop slowly so it feels like a leisurely fly-by.
-      // Santa local bbox spans roughly x=-16 .. x=60, so the offset is the
-      // x of the LEFT-MOST pixel of the team.
-      const SANTA_PERIOD = 14.0;          // seconds for a full crossing
-      const SANTA_Y      = 28.0;          // pixel y from top of FB
-      const cycle = (partTime % SANTA_PERIOD) / SANTA_PERIOD;
-      const santaX = -20 + cycle * (VW + 100);
-      // Tiny sinusoidal bob so the sleigh feels alive.
-      const santaY = SANTA_Y + Math.sin(partTime * 2.5) * 1.0;
-      gl.uniform2f(uOffsetSanta, santaX, santaY);
-      gl.bindVertexArray(santaVao);
-      gl.drawArrays(gl.TRIANGLES, 0, santaCount);
-      gl.bindVertexArray(null);
+      const cycleRaw = partTime / SANTA_PERIOD;
+      const cycleId = cycleRaw | 0;
+      const cycle = cycleRaw - cycleId;
+      // Detect a new cycle (or first cycle) and reset state.
+      if (cycleId !== santaCycleId) {
+        santaCycleId = cycleId;
+        santaState = 'flying';
+        santaHitFrac = rollSantaHitFrac();
+        santaRot = 0;
+        santaRotV = 0;
+        shootdownBeam = null;
+      }
+      // Compute on-rail position; used either for direct draw (flying) or
+      // as the launch state when transitioning to falling.
+      const railX = -20 + cycle * (VW + 100);
+      const railY = SANTA_Y + Math.sin(partTime * 2.5) * 1.0;
+      // Trigger the shootdown moment.
+      if (santaState === 'flying' && cycle >= santaHitFrac) {
+        santaState = 'falling';
+        santaFallX = railX;
+        santaFallY = railY;
+        // Carry forward most of the rail's horizontal momentum, plus a
+        // small downward kick from the bolt impact. The rail moves at
+        // (VW+100)/SANTA_PERIOD ~= 30 px/s; we keep ~70% of that.
+        santaFallVx = ((VW + 100) / SANTA_PERIOD) * 0.7;
+        santaFallVy = 35 + Math.random() * 25;
+        // Tumble end-over-end with a randomised direction and rate.
+        santaRotV = (1.6 + Math.random() * 1.4) * (Math.random() < 0.5 ? -1 : 1);
+        // Spawn the visible 2D laser beam from a random off-screen edge to
+        // Santa's current center. Beam lasts ~120 ms - long enough to
+        // register, short enough to feel like a "zap".
+        const localCx = santaFallX + SANTA_PIVOT_X;
+        const localCy = santaFallY + SANTA_PIVOT_Y;
+        // Pick origin from one of the four edges biased toward in-frame
+        // ship positions (mostly bottom-half so it reads as "from below").
+        const edge = Math.random();
+        let bx, by;
+        if (edge < 0.55) {                       // bottom
+          bx = Math.random() * VW;
+          by = VH + 8;
+        } else if (edge < 0.75) {                // bottom-left
+          bx = -8;
+          by = VH * 0.6 + Math.random() * VH * 0.3;
+        } else if (edge < 0.95) {                // bottom-right
+          bx = VW + 8;
+          by = VH * 0.6 + Math.random() * VH * 0.3;
+        } else {                                  // rare top (off a passing ship)
+          bx = Math.random() * VW;
+          by = -8;
+        }
+        shootdownBeam = {
+          x0: bx, y0: by, x1: localCx, y1: localCy,
+          t0: tt,
+          life: 0.14,
+          // Imperial-red bolt for visual contrast against the green forest.
+          col: [1.0, 0.30, 0.20],
+        };
+        // Initial impact burst at Santa's location.
+        spawnHitBurst(localCx, localCy);
+      }
+      // Integrate falling physics.
+      if (santaState === 'falling') {
+        santaFallVy += 90 * dt;        // gravity in px/s^2
+        santaFallVx *= Math.pow(0.65, dt);  // light air drag horizontally
+        santaFallX += santaFallVx * dt;
+        santaFallY += santaFallVy * dt;
+        santaRot   += santaRotV * dt;
+        // Continuous smoke + occasional sparks streaming from the wreck.
+        santaSmokeAccum += dt;
+        while (santaSmokeAccum > 0.04) {
+          santaSmokeAccum -= 0.04;
+          const cx = santaFallX + SANTA_PIVOT_X + (Math.random() - 0.5) * 8;
+          const cy = santaFallY + SANTA_PIVOT_Y + (Math.random() - 0.5) * 6;
+          spawnSmokePuff(cx, cy, 0.85);
+          if (Math.random() < 0.3) spawnSpark(cx, cy, 0.5);
+        }
+        // Crash check - when the body reaches the tree-line.
+        if (santaFallY + SANTA_PIVOT_Y >= GROUND_Y) {
+          santaState = 'gone';
+          const cx = santaFallX + SANTA_PIVOT_X;
+          const cy = GROUND_Y;
+          spawnCrashBurst(cx, cy);
+        }
+      }
+      // Render Santa unless he's already crashed for this cycle.
+      if (santaState !== 'gone') {
+        gl.useProgram(santaProg);
+        gl.uniform2f(uScreenSanta, VW, VH);
+        let drawX, drawY, rot;
+        if (santaState === 'falling') {
+          drawX = santaFallX;
+          drawY = santaFallY;
+          rot = santaRot;
+        } else {
+          drawX = railX;
+          drawY = railY;
+          rot = 0;
+        }
+        const c = Math.cos(rot), s = Math.sin(rot);
+        gl.uniform2f(uOffsetSanta, drawX, drawY);
+        gl.uniform2f(uRotSanta, c, s);
+        gl.uniform2f(uPivotSanta, SANTA_PIVOT_X, SANTA_PIVOT_Y);
+        gl.bindVertexArray(santaVao);
+        gl.drawArrays(gl.TRIANGLES, 0, santaCount);
+        gl.bindVertexArray(null);
+      }
       gl.enable(gl.DEPTH_TEST);
 
       // Fleet
@@ -2617,6 +2894,134 @@ export function battle(gl) {
         gl.disable(gl.BLEND);
         gl.bindVertexArray(null);
       }
+
+      // ---- Santa shootdown 2D particles ----
+      // Step + render the screen-space crash particles (sparks, smoke,
+      // debris, fireballs) that follow the falling sleigh and bloom out
+      // at the impact site. Drawn last so they sit on top of everything,
+      // including the snowfall and ship lasers, which is the right
+      // foreground reading for an explosion right next to the camera.
+      // Step phase
+      for (let i = santaParticles.length - 1; i >= 0; i--) {
+        const p = santaParticles[i];
+        p.age += dt;
+        if (p.age >= p.life) { santaParticles.splice(i, 1); continue; }
+        p.vx += p.gx * dt;
+        p.vy += p.gy * dt;
+        p.x  += p.vx * dt;
+        p.y  += p.vy * dt;
+        // Ground collision for debris/sparks: stop at tree-line so they
+        // pile near the crash instead of falling through the world.
+        if ((p.kind === 'debris' || p.kind === 'spark') && p.y > GROUND_Y) {
+          p.y = GROUND_Y;
+          p.vy = -p.vy * 0.25;            // tiny bounce
+          p.vx *= 0.6;
+        }
+      }
+      // Render phase
+      if (santaParticles.length > 0) {
+        // Build per-frame quad geometry. Each particle gets a 2*size square,
+        // its color faded according to age/life and kind.
+        let vi = 0;
+        let drawCount = 0;
+        for (const p of santaParticles) {
+          const k = p.age / p.life;
+          let r = p.r, g = p.g, b = p.b;
+          // Per-kind color/size animation.
+          let scale = 1.0;
+          if (p.kind === 'fire') {
+            // yellow -> orange -> red over life
+            if (k < 0.5) {
+              const u = k / 0.5;
+              r = 1.0; g = 0.95 - 0.55 * u; b = 0.55 - 0.45 * u;
+            } else {
+              const u = (k - 0.5) / 0.5;
+              r = 1.0 - 0.4 * u; g = 0.40 - 0.35 * u; b = 0.10 - 0.05 * u;
+            }
+            scale = 1.0 + k * 0.6;
+          } else if (p.kind === 'smoke') {
+            // Smoke darkens slightly and grows.
+            const f = 1.0 - k * 0.4;
+            r *= f; g *= f; b *= f;
+            scale = 1.0 + k * 1.4;
+          } else if (p.kind === 'spark') {
+            scale = Math.max(0.2, 1.0 - k * 0.7);
+          } else if (p.kind === 'debris') {
+            scale = 1.0 - k * 0.3;
+          }
+          const hs = p.size * scale;
+          const x0 = p.x - hs, x1 = p.x + hs;
+          const y0 = p.y - hs, y1 = p.y + hs;
+          // Two triangles, 6 verts, 5 floats each (x,y,r,g,b).
+          // Tri 1: (x0,y0) (x1,y0) (x1,y1)
+          santaPartScratch[vi++] = x0; santaPartScratch[vi++] = y0;
+          santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+          santaPartScratch[vi++] = x1; santaPartScratch[vi++] = y0;
+          santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+          santaPartScratch[vi++] = x1; santaPartScratch[vi++] = y1;
+          santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+          // Tri 2: (x0,y0) (x1,y1) (x0,y1)
+          santaPartScratch[vi++] = x0; santaPartScratch[vi++] = y0;
+          santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+          santaPartScratch[vi++] = x1; santaPartScratch[vi++] = y1;
+          santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+          santaPartScratch[vi++] = x0; santaPartScratch[vi++] = y1;
+          santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+          drawCount += 6;
+        }
+        gl.useProgram(santaProg);
+        gl.uniform2f(uScreenSanta, VW, VH);
+        gl.uniform2f(uOffsetSanta, 0, 0);
+        gl.uniform2f(uRotSanta, 1, 0);          // identity rotation
+        gl.uniform2f(uPivotSanta, 0, 0);
+        gl.bindVertexArray(santaPartVao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, santaPartVbo);
+        // Upload only the slice we filled.
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0,
+          santaPartScratch.subarray(0, vi));
+        gl.disable(gl.DEPTH_TEST);
+        gl.drawArrays(gl.TRIANGLES, 0, drawCount);
+        gl.enable(gl.DEPTH_TEST);
+        gl.bindVertexArray(null);
+      }
+
+      // ---- Shootdown laser beam (brief 2D screen-space line) ----
+      // Drawn after the particles so the bolt visually 'cuts through' the
+      // first puff of debris. Uses the lineProg in clip-space by faking
+      // a trivial MVP - we just emit NDC directly.
+      if (shootdownBeam) {
+        const k = (tt - shootdownBeam.t0) / shootdownBeam.life;
+        if (k >= 1.0) {
+          shootdownBeam = null;
+        } else {
+          // Convert pixel endpoints to NDC manually. Note: the FBO blit
+          // re-flips Y on present, matching SANTA_VS convention - so we
+          // do NOT flip Y here either.
+          const x0 = (shootdownBeam.x0 / VW) * 2 - 1;
+          const y0 = (shootdownBeam.y0 / VH) * 2 - 1;
+          const x1 = (shootdownBeam.x1 / VW) * 2 - 1;
+          const y1 = (shootdownBeam.y1 / VH) * 2 - 1;
+          const lineData = new Float32Array([x0, y0, 0,  x1, y1, 0]);
+          gl.useProgram(lineProg);
+          // Identity MVP - feed pre-computed NDC straight through.
+          const I = new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1]);
+          gl.uniformMatrix4fv(uMvpLine, false, I);
+          gl.uniform3f(uColLine,
+            shootdownBeam.col[0],
+            shootdownBeam.col[1],
+            shootdownBeam.col[2]);
+          gl.bindVertexArray(boltVao);
+          gl.bindBuffer(gl.ARRAY_BUFFER, boltVbo);
+          gl.bufferSubData(gl.ARRAY_BUFFER, 0, lineData);
+          gl.enable(gl.BLEND);
+          gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+          gl.disable(gl.DEPTH_TEST);
+          gl.drawArrays(gl.LINES, 0, 2);
+          gl.enable(gl.DEPTH_TEST);
+          gl.disable(gl.BLEND);
+          gl.bindVertexArray(null);
+        }
+      }
     },
     dispose(gl) {
       gl.deleteProgram(skyProg);
@@ -2629,6 +3034,7 @@ export function battle(gl) {
       gl.deleteVertexArray(duneMesh.vao); gl.deleteBuffer(duneMesh.vbo);
       gl.deleteVertexArray(treeMesh.vao); gl.deleteBuffer(treeMesh.vbo);
       gl.deleteVertexArray(santaVao); gl.deleteBuffer(santaVbo);
+      gl.deleteVertexArray(santaPartVao); gl.deleteBuffer(santaPartVbo);
       for (const k of Object.keys(ships)) {
         gl.deleteVertexArray(ships[k].vao);
         gl.deleteBuffer(ships[k].vbo);
