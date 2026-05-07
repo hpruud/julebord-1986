@@ -1853,12 +1853,21 @@ export function battle(gl) {
   const MAX_SANTA_PARTICLES = 220;
   const SANTA_PART_STRIDE = 5 * 4;       // matches santaProg vertex layout
   const SANTA_PART_VERTS_PER = 6;        // 2 tris per quad
+  // Shooting stars share the santaProg shader and the scratch buffer below
+  // (one shared upload per frame keeps draw calls minimal). Each star
+  // emits one bright head quad + STAR_TRAIL_SEGS gradient quads.
+  const MAX_SHOOTING_STARS = 6;
+  const STAR_TRAIL_SEGS = 5;
+  const STAR_QUADS_PER = 1 + STAR_TRAIL_SEGS;
+  // Total scratch capacity must hold crash particles + shooting-star quads
+  // simultaneously without clipping; 280 quads is comfortable headroom.
+  const SCRATCH_QUADS = MAX_SANTA_PARTICLES + MAX_SHOOTING_STARS * STAR_QUADS_PER;
   const santaPartVao = gl.createVertexArray();
   const santaPartVbo = gl.createBuffer();
   gl.bindVertexArray(santaPartVao);
   gl.bindBuffer(gl.ARRAY_BUFFER, santaPartVbo);
   gl.bufferData(gl.ARRAY_BUFFER,
-    MAX_SANTA_PARTICLES * SANTA_PART_VERTS_PER * SANTA_PART_STRIDE,
+    SCRATCH_QUADS * SANTA_PART_VERTS_PER * SANTA_PART_STRIDE,
     gl.DYNAMIC_DRAW);
   gl.enableVertexAttribArray(0);
   gl.vertexAttribPointer(0, 2, gl.FLOAT, false, SANTA_PART_STRIDE, 0);
@@ -1867,7 +1876,7 @@ export function battle(gl) {
   gl.bindVertexArray(null);
   // Reusable scratch buffer big enough for all slots (max usage path).
   const santaPartScratch = new Float32Array(
-    MAX_SANTA_PARTICLES * SANTA_PART_VERTS_PER * 5);
+    SCRATCH_QUADS * SANTA_PART_VERTS_PER * 5);
 
   // Each particle:
   //   x,y        : center in pixel coords (absolute, top-left origin)
@@ -1882,6 +1891,57 @@ export function battle(gl) {
   function spawn2D(p) {
     if (santaParticles.length >= MAX_SANTA_PARTICLES) santaParticles.shift();
     santaParticles.push(p);
+  }
+
+  // ----- Shooting stars (background sky decoration) -----
+  // Short bright streaks that arc across the upper sky a few times during
+  // the battle. Each star is a small particle with linear motion plus a
+  // gradient tail; we render head + STAR_TRAIL_SEGS fading segments via
+  // the same santaProg shader as the crash debris (single shared draw).
+  // Stored in a tiny array, capped at MAX_SHOOTING_STARS.
+  //
+  // Each star: { x, y, vx, vy, age, life, hue }
+  //   x,y     : current head pixel position (top-left origin)
+  //   vx,vy   : velocity in px/s (mostly horizontal, slight downward)
+  //   age,life: seconds; head dims as age/life -> 1
+  //   hue     : 0=cool blue-white, 1=pure white, 2=warm gold tint
+  const shootingStars = [];
+  // Time of next scheduled spawn (set on first frame). Random gap of
+  // 1.4 .. 3.6 s between stars; 22% chance of a 'shower' (two stars
+  // 0.05 .. 0.18 s apart) to break up the rhythm.
+  let nextStarT = -1;
+  let pendingStarT = -1;          // queued second-star-of-shower spawn time
+
+  function spawnShootingStar(tt) {
+    if (shootingStars.length >= MAX_SHOOTING_STARS) shootingStars.shift();
+    // Origin: somewhere along the top-third of the screen, biased to the
+    // left or right edge so the streak crosses a meaningful distance.
+    const fromLeft = Math.random() < 0.5;
+    const x = fromLeft
+      ? -16 + Math.random() * (VW * 0.20)
+      : VW + 16 - Math.random() * (VW * 0.20);
+    const y = 4 + Math.random() * (VH * 0.30);
+    // Direction: head toward the opposite side with a slight downward arc.
+    // Speed in px/s tuned for ~0.55..0.95 s screen traversal.
+    const speed = 360 + Math.random() * 220;
+    const dirX = fromLeft ? 1 : -1;
+    const tilt = (0.18 + Math.random() * 0.18);
+    const vx = dirX * speed * Math.cos(tilt);
+    const vy = speed * Math.sin(tilt);
+    // Hue: mostly white, occasional cool/warm.
+    const r = Math.random();
+    const hue = r < 0.65 ? 1 : (r < 0.85 ? 0 : 2);
+    shootingStars.push({
+      x, y, vx, vy,
+      age: 0,
+      // Slightly randomised lifetime; clipped by off-screen check anyway.
+      life: 0.55 + Math.random() * 0.40,
+      hue,
+    });
+  }
+
+  function scheduleNextStar(tt) {
+    nextStarT = tt + 1.4 + Math.random() * 2.2;
   }
 
   // Ships
@@ -2895,13 +2955,15 @@ export function battle(gl) {
         gl.bindVertexArray(null);
       }
 
-      // ---- Santa shootdown 2D particles ----
+      // ---- Santa shootdown 2D particles + shooting stars ----
       // Step + render the screen-space crash particles (sparks, smoke,
       // debris, fireballs) that follow the falling sleigh and bloom out
-      // at the impact site. Drawn last so they sit on top of everything,
-      // including the snowfall and ship lasers, which is the right
-      // foreground reading for an explosion right next to the camera.
-      // Step phase
+      // at the impact site, plus a small population of shooting-star
+      // streaks that arc across the upper sky for atmosphere. Both share
+      // the santaProg shader and a single scratch buffer + draw call so
+      // the cost is one upload + one drawArrays per frame regardless of
+      // which (or both) are active.
+      // Step phase - crash particles
       for (let i = santaParticles.length - 1; i >= 0; i--) {
         const p = santaParticles[i];
         p.age += dt;
@@ -2918,49 +2980,115 @@ export function battle(gl) {
           p.vx *= 0.6;
         }
       }
-      // Render phase
-      if (santaParticles.length > 0) {
-        // Build per-frame quad geometry. Each particle gets a 2*size square,
-        // its color faded according to age/life and kind.
-        let vi = 0;
-        let drawCount = 0;
-        for (const p of santaParticles) {
-          const k = p.age / p.life;
-          let r = p.r, g = p.g, b = p.b;
-          // Per-kind color/size animation.
-          let scale = 1.0;
-          if (p.kind === 'fire') {
-            // yellow -> orange -> red over life
-            if (k < 0.5) {
-              const u = k / 0.5;
-              r = 1.0; g = 0.95 - 0.55 * u; b = 0.55 - 0.45 * u;
-            } else {
-              const u = (k - 0.5) / 0.5;
-              r = 1.0 - 0.4 * u; g = 0.40 - 0.35 * u; b = 0.10 - 0.05 * u;
-            }
-            scale = 1.0 + k * 0.6;
-          } else if (p.kind === 'smoke') {
-            // Smoke darkens slightly and grows.
-            const f = 1.0 - k * 0.4;
-            r *= f; g *= f; b *= f;
-            scale = 1.0 + k * 1.4;
-          } else if (p.kind === 'spark') {
-            scale = Math.max(0.2, 1.0 - k * 0.7);
-          } else if (p.kind === 'debris') {
-            scale = 1.0 - k * 0.3;
+      // Step phase - shooting stars
+      // Initialise spawn timer on the first frame of the part.
+      if (nextStarT < 0) scheduleNextStar(tt);
+      // Spawn any due stars (including queued shower-second).
+      if (tt >= nextStarT) {
+        spawnShootingStar(tt);
+        // 22% chance this is a shower: queue a follow-up shortly after.
+        if (Math.random() < 0.22) {
+          pendingStarT = tt + 0.05 + Math.random() * 0.13;
+        }
+        scheduleNextStar(tt);
+      }
+      if (pendingStarT > 0 && tt >= pendingStarT) {
+        spawnShootingStar(tt);
+        pendingStarT = -1;
+      }
+      // Advance and cull active stars.
+      for (let i = shootingStars.length - 1; i >= 0; i--) {
+        const s = shootingStars[i];
+        s.age += dt;
+        if (s.age >= s.life) { shootingStars.splice(i, 1); continue; }
+        s.x += s.vx * dt;
+        s.y += s.vy * dt;
+        // Off-screen left/right/bottom = retire early. (Don't cull above
+        // because they always start near the top of the screen anyway.)
+        if (s.x < -32 || s.x > VW + 32 || s.y > VH + 16) {
+          shootingStars.splice(i, 1);
+        }
+      }
+
+      // Emit phase - one shared scratch buffer holds both crash-particle
+      // quads and shooting-star (head + trail) quads. Build, then draw
+      // everything in one call below.
+      let vi = 0;
+      let drawCount = 0;
+      // -- Crash particles -------------------------------------------------
+      for (const p of santaParticles) {
+        const k = p.age / p.life;
+        let r = p.r, g = p.g, b = p.b;
+        // Per-kind color/size animation.
+        let scale = 1.0;
+        if (p.kind === 'fire') {
+          // yellow -> orange -> red over life
+          if (k < 0.5) {
+            const u = k / 0.5;
+            r = 1.0; g = 0.95 - 0.55 * u; b = 0.55 - 0.45 * u;
+          } else {
+            const u = (k - 0.5) / 0.5;
+            r = 1.0 - 0.4 * u; g = 0.40 - 0.35 * u; b = 0.10 - 0.05 * u;
           }
-          const hs = p.size * scale;
-          const x0 = p.x - hs, x1 = p.x + hs;
-          const y0 = p.y - hs, y1 = p.y + hs;
-          // Two triangles, 6 verts, 5 floats each (x,y,r,g,b).
-          // Tri 1: (x0,y0) (x1,y0) (x1,y1)
+          scale = 1.0 + k * 0.6;
+        } else if (p.kind === 'smoke') {
+          // Smoke darkens slightly and grows.
+          const f = 1.0 - k * 0.4;
+          r *= f; g *= f; b *= f;
+          scale = 1.0 + k * 1.4;
+        } else if (p.kind === 'spark') {
+          scale = Math.max(0.2, 1.0 - k * 0.7);
+        } else if (p.kind === 'debris') {
+          scale = 1.0 - k * 0.3;
+        }
+        const hs = p.size * scale;
+        const x0 = p.x - hs, x1 = p.x + hs;
+        const y0 = p.y - hs, y1 = p.y + hs;
+        // Two triangles, 6 verts, 5 floats each (x,y,r,g,b).
+        // Tri 1: (x0,y0) (x1,y0) (x1,y1)
+        santaPartScratch[vi++] = x0; santaPartScratch[vi++] = y0;
+        santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+        santaPartScratch[vi++] = x1; santaPartScratch[vi++] = y0;
+        santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+        santaPartScratch[vi++] = x1; santaPartScratch[vi++] = y1;
+        santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+        // Tri 2: (x0,y0) (x1,y1) (x0,y1)
+        santaPartScratch[vi++] = x0; santaPartScratch[vi++] = y0;
+        santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+        santaPartScratch[vi++] = x1; santaPartScratch[vi++] = y1;
+        santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+        santaPartScratch[vi++] = x0; santaPartScratch[vi++] = y1;
+        santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+        drawCount += 6;
+      }
+      // -- Shooting stars --------------------------------------------------
+      // Each star renders as a chain of small quads sampled along its
+      // recent path. The head is a brighter 2x2 px square; trailing
+      // segments fade smoothly to black behind it. We compute trail
+      // samples by walking backwards from the head along (-vx,-vy) at
+      // even time intervals so the trail length is motion-relative
+      // (slow stars get a shorter trail, fast ones get a long streak).
+      for (const s of shootingStars) {
+        // Tint matrix per hue category.
+        let hr = 1.0, hg = 1.0, hb = 1.0;
+        if (s.hue === 0)      { hr = 0.78; hg = 0.86; hb = 1.00; }   // cool blue-white
+        else if (s.hue === 2) { hr = 1.00; hg = 0.92; hb = 0.70; }   // warm gold
+        // Fade the whole star toward end-of-life so it doesn't pop out.
+        const lifeFade = Math.min(1.0, 1.0 - s.age / s.life * 0.4);
+        // Trail step: 0.014 s per segment is roughly the perceived AA gap.
+        const STEP = 0.014;
+        // Head quad - 1.5 px half-extent for a crisp 3-pixel point.
+        {
+          const hs = 1.5;
+          const x0 = s.x - hs, x1 = s.x + hs;
+          const y0 = s.y - hs, y1 = s.y + hs;
+          const r = hr * lifeFade, g = hg * lifeFade, b = hb * lifeFade;
           santaPartScratch[vi++] = x0; santaPartScratch[vi++] = y0;
           santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
           santaPartScratch[vi++] = x1; santaPartScratch[vi++] = y0;
           santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
           santaPartScratch[vi++] = x1; santaPartScratch[vi++] = y1;
           santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
-          // Tri 2: (x0,y0) (x1,y1) (x0,y1)
           santaPartScratch[vi++] = x0; santaPartScratch[vi++] = y0;
           santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
           santaPartScratch[vi++] = x1; santaPartScratch[vi++] = y1;
@@ -2969,6 +3097,36 @@ export function battle(gl) {
           santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
           drawCount += 6;
         }
+        // Trail quads.
+        for (let t = 1; t <= STAR_TRAIL_SEGS; t++) {
+          const dt2 = t * STEP;
+          const tx = s.x - s.vx * dt2;
+          const ty = s.y - s.vy * dt2;
+          // Brightness drops linearly with segment index, clamped so the
+          // tail always reaches near-black at the last segment.
+          const tFade = (1.0 - t / STAR_TRAIL_SEGS) * lifeFade;
+          // Trail also gets thinner toward the tail.
+          const hs = 1.0 - (t / STAR_TRAIL_SEGS) * 0.55;
+          const r = hr * tFade, g = hg * tFade, b = hb * tFade;
+          const x0 = tx - hs, x1 = tx + hs;
+          const y0 = ty - hs, y1 = ty + hs;
+          santaPartScratch[vi++] = x0; santaPartScratch[vi++] = y0;
+          santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+          santaPartScratch[vi++] = x1; santaPartScratch[vi++] = y0;
+          santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+          santaPartScratch[vi++] = x1; santaPartScratch[vi++] = y1;
+          santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+          santaPartScratch[vi++] = x0; santaPartScratch[vi++] = y0;
+          santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+          santaPartScratch[vi++] = x1; santaPartScratch[vi++] = y1;
+          santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+          santaPartScratch[vi++] = x0; santaPartScratch[vi++] = y1;
+          santaPartScratch[vi++] = r;  santaPartScratch[vi++] = g; santaPartScratch[vi++] = b;
+          drawCount += 6;
+        }
+      }
+      // Single shared draw call for both populations.
+      if (drawCount > 0) {
         gl.useProgram(santaProg);
         gl.uniform2f(uScreenSanta, VW, VH);
         gl.uniform2f(uOffsetSanta, 0, 0);
