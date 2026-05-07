@@ -57,26 +57,31 @@ export function sinescroller(gl) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-  // Sync the scroll so the LAST character exits the left edge exactly when
-  // the part ends. The part's duration lives in src/timeline.js — keep these
-  // in sync. We compute speed from (text length * char width) / part duration:
-  //   travel = TEXT.length * 16 px   (offset 0 -> last char fully past x=-16)
-  //   speed  = travel / PART_DUR_S
-  // Single linear pass (no modulo loop), so once the last star scrolls off
-  // the screen stays empty for the final transition fade.
+  // Sync the scroll so the text enters cleanly from the right at part start
+  // and the LAST character exits the left edge exactly when the part ends.
+  // Part duration lives in src/timeline.js — keep these in sync.
+  //   startOffset = -VW            -> char 0 sits just off the right edge
+  //   endOffset   = TEXT.length*16 -> last char sits just off the left edge
+  //   travel      = endOffset - startOffset (covers both off-screen margins)
+  //   speed       = travel / PART_DUR_S
+  // Single linear pass (no modulo loop), so the screen is empty during the
+  // fade-in (text not yet entered) and during the fade-out (text already gone).
   const PART_DUR_S = 42;            // matches timeline.js sinescroller.dur (ms/1000)
   const charW = 16;                 // 8 px glyph * 2 scale (see drawScaled)
-  const totalTravelPx = TEXT.length * charW;
-  const speed = totalTravelPx / PART_DUR_S; // ~108.19 px/s for current text
+  const startOffset = -VW;
+  const endOffset = TEXT.length * charW;
+  const totalTravelPx = endOffset - startOffset;
+  const speed = totalTravelPx / PART_DUR_S; // ~115.81 px/s for current text
 
   return {
     render(gl, t, fbo) {
       // clear buf
       buf.fill(0);
       const tt = t / 1000;
-      // Linear, non-looping offset. Clamp so we don't overshoot if the part
-      // gets extended at runtime (e.g. via __director debug controls).
-      const offset = Math.min(tt * speed, totalTravelPx);
+      // Linear, non-looping offset that starts off-right and ends off-left.
+      // Clamp to endOffset so a runtime-extended part duration just leaves
+      // an empty screen instead of dragging the text further left forever.
+      const offset = Math.min(startOffset + tt * speed, endOffset);
       const baseY = (VH/2 - 16) | 0;
       // Single-pass draw. No '+ 4' wrap-around copies and no modulo on the
       // index — the text scrolls across exactly once and then the screen is
