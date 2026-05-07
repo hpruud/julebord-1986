@@ -78,9 +78,9 @@ export const TEXT = {
     lines: [
       ['JULEBORD 1986 DEMO', 2],
       ['', 1],
-      ['CODE     SADDAM   ',     1],
-      ['DESIGN   SADDAM   ',     1],
-      ['PIXELS   SADDAM   ',     1],
+      ['CODE     CLAUDE   ',     1],
+      ['DESIGN   CLAUDE   ',     1],
+      ['PIXELS   CLAUDE   ',     1],
       ['MUSIC    EQUALIZER',     1],
       ['', 1],
       ['MERRY CHRISTMAS', 2],
