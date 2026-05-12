@@ -1,21 +1,21 @@
 # Academy - Julebord 2026 Demo
 
-A browser-native Christmas demo in the spirit of late-80s / early-90s Amiga 500 demoscene productions, by **Julebord 2026**. Pure HTML + ES modules + WebGL2. No build step. No audio. No external assets. Just pixels, copper bars, and snow.
+A browser-native Christmas demo in the spirit of late-80s / early-90s Amiga 500 demoscene productions, by **Julebord 2026**. Pure HTML + ES modules + WebGL2. No build step. No external assets. Just pixels, copper bars, snow — and a hand-written 4-channel `.mod` player.
 
 ## Run it
 
 This demo uses ES modules and an `AudioWorklet`, both of which Chromium-based browsers refuse to load from `file://`. **You must serve the folder over HTTP**.
 
 ### Option A — Python
+From the project folder:
 ```
-cd C:\dev\amiga-demo
 python -m http.server 8080
 ```
 Then open http://localhost:8080/
 
 ### Option B — Node `npx`
+From the project folder:
 ```
-cd C:\dev\amiga-demo
 npx http-server -p 8080 .
 ```
 
@@ -105,12 +105,12 @@ The whole demo renders into a **320×256** internal framebuffer (low-res Amiga P
 
 ## Browser support
 
-Targets the **latest Chrome stable**, desktop. Requires WebGL2 (any modern Chrome on a normal GPU).
+Requires **WebGL2** and `AudioWorklet`. Works in any modern desktop browser (Chrome, Firefox, Edge, Safari 15+). Developed and tested primarily on the latest Chrome stable.
 
 ## Credits
 
 - Code, design, pixels: **Julebord 2026**
-- No audio (intentional)
-- No third-party assets — everything procedural
+- Music: `assets/somewhere.mod` played by a hand-written 4-channel ProTracker player (`src/audio/modplayer.js`)
+- No third-party code; no third-party assets beyond the embedded `.mod`
 
 Pixels before polygons. Merry Christmas.

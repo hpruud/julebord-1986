@@ -10,7 +10,7 @@ export function getGL(canvas) {
     powerPreference: 'high-performance',
   });
   if (!gl) {
-    document.body.innerHTML = '<div style="color:#fff;font-family:monospace;padding:32px;">WebGL2 is required. Please use a recent Chrome.</div>';
+    document.body.innerHTML = '<div style="color:#fff;font-family:monospace;padding:32px;">WebGL2 is required. Please use a recent Chrome, Firefox, Edge, or Safari 15+.</div>';
     throw new Error('WebGL2 not available');
   }
   canvas.width = VW;
