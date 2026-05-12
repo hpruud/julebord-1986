@@ -7,7 +7,7 @@
 // sphere (d < 1.0). Outside the spheres we show the fire texture untouched.
 // This gives crisp edges with no color bleed in either direction.
 import { fire } from './fire.js';
-import { createFBO, bindFBO, clearFBO } from '../gl/framebuffer.js';
+import { createFBO, bindFBO, clearFBO, disposeFBO } from '../gl/framebuffer.js';
 import { createProgram, VS_FULLSCREEN, VW, VH } from '../gl/context.js';
 import { drawQuad } from '../gl/quad.js';
 import { createPaletteTexture, PALETTES } from '../gl/palette.js';
@@ -103,8 +103,7 @@ export function bobsfire(gl) {
       if (subFire.dispose) subFire.dispose(gl);
       gl.deleteProgram(prog);
       gl.deleteTexture(palTex);
-      gl.deleteFramebuffer(fboFire.fbo);
-      gl.deleteTexture(fboFire.tex);
+      disposeFBO(gl, fboFire);
     },
   };
 }

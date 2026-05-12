@@ -40,3 +40,18 @@ export function clearFBO(gl, r=0, g=0, b=0, a=1) {
   gl.clearDepth(1.0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 }
+
+// Release all GPU resources owned by an FBO record produced by createFBO:
+// the color texture, the framebuffer object itself, and the optional depth
+// renderbuffer. After this returns the record's fields are nulled out so
+// double-frees and accidental re-binds are caught early. Safe to call with
+// null/undefined (no-op).
+export function disposeFBO(gl, target) {
+  if (!target) return;
+  if (target.tex) gl.deleteTexture(target.tex);
+  if (target.depthRB) gl.deleteRenderbuffer(target.depthRB);
+  if (target.fbo) gl.deleteFramebuffer(target.fbo);
+  target.tex = null;
+  target.depthRB = null;
+  target.fbo = null;
+}

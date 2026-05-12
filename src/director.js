@@ -1,5 +1,5 @@
 // Director: schedules timeline parts, runs transitions, owns the low-res FBO.
-import { createFBO, bindFBO, clearFBO } from './gl/framebuffer.js';
+import { createFBO, bindFBO, clearFBO, disposeFBO } from './gl/framebuffer.js';
 import { VW, VH } from './gl/context.js';
 import { initBlit, blitToScreen } from './gl/blit.js';
 import { now } from './util/time.js';
@@ -19,7 +19,6 @@ export class Director {
     this.idx = -1;
     this.partStartMs = 0;
     this.current = null;
-    this.next = null;
     this.transitioning = false;
     this.transitionStart = 0;
     this.transitionDur = 600;
@@ -171,5 +170,18 @@ export class Director {
     // The demo loops indefinitely (last part stays on screen until the user
     // presses SPACE, which wraps back to part 0), so it is never "finished".
     return false;
+  }
+
+  // Release GPU resources. The Director normally lives for the whole page
+  // lifetime so this isn't called in production, but it makes hot-reload /
+  // tests / context-recreation flows correct.
+  dispose() {
+    const gl = this.gl;
+    if (this.current && this.current.dispose) this.current.dispose(gl);
+    this.current = null;
+    disposeFBO(gl, this.scene);
+    disposeFBO(gl, this.tmp);
+    this.scene = null;
+    this.tmp = null;
   }
 }

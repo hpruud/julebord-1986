@@ -1,4 +1,12 @@
 // Blits a low-res texture to screen with optional CRT overlay.
+//
+// State model: a single cached program + uniform locations is held in module
+// scope. This is fine because the demo creates exactly one WebGL2 context
+// (see src/gl/context.js) for the lifetime of the page. If you ever need to
+// support context loss recovery or multiple contexts, call `initBlit(gl)`
+// again with the new context: the cache is keyed by the GL object and will
+// be rebuilt on mismatch, so the old (now-invalid) program reference is
+// dropped rather than reused.
 import { createProgram, VS_FULLSCREEN } from './context.js';
 import { drawQuad } from './quad.js';
 
@@ -41,10 +49,20 @@ void main() {
 `;
 
 let prog = null;
+let progGL = null; // GL context the cached program belongs to
 let uTex, uScreen, uLores, uCrt, uShake, uTime, uFlash;
 
 export function initBlit(gl) {
+  // If we were previously initialised against a different context (e.g.
+  // after context loss / recovery), drop the stale reference. We can't
+  // safely call deleteProgram on the old context here because it may be
+  // lost; that's the caller's responsibility.
+  if (progGL && progGL !== gl) {
+    prog = null;
+  }
+  if (prog) return;
   prog = createProgram(gl, VS_FULLSCREEN, FS);
+  progGL = gl;
   uTex    = gl.getUniformLocation(prog, 'u_tex');
   uScreen = gl.getUniformLocation(prog, 'u_screenSize');
   uLores  = gl.getUniformLocation(prog, 'u_loresSize');
@@ -55,6 +73,12 @@ export function initBlit(gl) {
 }
 
 export function blitToScreen(gl, srcTex, opts) {
+  if (!prog || progGL !== gl) {
+    // Lazy/defensive init so callers don't have to remember the ordering.
+    // The Director already calls initBlit explicitly; this just makes the
+    // module robust to future refactors.
+    initBlit(gl);
+  }
   const { screenW, screenH, loresW, loresH, crt=0, shake=0, time=0, flash=0 } = opts;
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, screenW, screenH);
