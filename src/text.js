@@ -63,7 +63,7 @@ export const TEXT = {
       'HO HO HO',
       '',
       'A SPECIAL GREETING GOES TO PATIENT',
-	  'YOU ARE NEVER FORGOTTEN...',
+      'YOU ARE NEVER FORGOTTEN...',
     ],
   },
 
