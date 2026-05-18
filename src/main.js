@@ -23,6 +23,25 @@ function fitCanvas() {
   const scale = Math.max(1, Math.min(SCALE_MAX, Math.floor(Math.min(w / VW, h / VH))));
   canvas.width  = VW * scale;
   canvas.height = VH * scale;
+  positionHint();
+}
+
+// The canvas uses `object-fit: contain` so the visible image is letterboxed
+// inside the viewport. Anchor the keys hint to the bottom-right *of the
+// image*, not the viewport, so it sits just inside the demo frame.
+function positionHint() {
+  const hint = document.getElementById('hint');
+  if (!hint) return;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const imgAspect = VW / VH;
+  const vpAspect = vw / vh;
+  let imgW, imgH;
+  if (vpAspect > imgAspect) { imgH = vh; imgW = vh * imgAspect; }
+  else                      { imgW = vw; imgH = vw / imgAspect; }
+  const rightGap = (vw - imgW) / 2;
+  const bottomGap = (vh - imgH) / 2;
+  hint.style.right  = (rightGap + 4) + 'px';
+  hint.style.bottom = (bottomGap + 2) + 'px';
 }
 
 let crtOn = 0;
