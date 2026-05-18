@@ -484,13 +484,17 @@ export function starfield(gl) {
       // the second playthrough" bug, which was caused by an off-screen
       // start window plus loop-wrap timing.
       const SWEEP_DUR = 7.0;        // seconds per right->left pass
-      // No preload: Santa starts fully off-screen right and flies in.
-      // Safe because we hard-reload between demo runs, so every entry to
-      // this part begins with tt=0 and a fresh closure.
+      // No preload: the entire sleigh team (reindeer + sleigh + Santa)
+      // starts fully off-screen right and flies in. Reindeer extend up to
+      // 108px to the LEFT of pathX (with the xSign=-1 mirror) and the
+      // sleigh hull reaches ~17px to the RIGHT, so we start pathX at
+      // VW + 110 (everything off the right edge) and end at -20 (every-
+      // thing off the left edge).
+      const X_START = VW + 110;
+      const X_END   = -20;
       const cycT = ((tt) % SWEEP_DUR + SWEEP_DUR) % SWEEP_DUR;
       const u = cycT / SWEEP_DUR;
-      // pathX goes from VW+30 (just off right) to -30 (just off left).
-      const pathX = (VW + 30) - (VW + 60) * u;
+      const pathX = X_START + (X_END - X_START) * u;
       // Reindeer face -X (leftward) the entire sweep.
       const xSign = -1;
       // Vertical sine swoop, plus a slow drift.
