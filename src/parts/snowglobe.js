@@ -316,6 +316,72 @@ void main(){ v_uv = a_pos * 0.5 + 0.5; gl_Position = vec4(a_pos, 0.0, 1.0); }
       const [rr, gg, bb] = hsv(hue, 0.9, 1.0);
       plotScene(px2, py2, rr, gg, bb);
     }
+    // 4b) Twinkling fairy lights scattered over the front of the tree.
+    // Pseudo-random but deterministic positions; each light has its own
+    // blink phase so the whole tree shimmers.
+    const N_LIGHTS = 36;
+    for (let i = 0; i < N_LIGHTS; i++) {
+      // Stable hash-based position inside the lowest triangle's bbox.
+      const r1 = Math.sin(i * 12.9898) * 43758.5453;
+      const r2 = Math.sin(i * 78.233)  * 12345.6789;
+      const u = r1 - Math.floor(r1);          // 0..1 vertical along tree
+      const v = (r2 - Math.floor(r2)) * 2 - 1; // -1..1 horizontal
+      const dy = (TOP_Y + (BOT_Y - TOP_Y) * u) | 0;
+      const hw = treeHalfWidth(dy);
+      if (hw <= 1) continue;
+      // Place the light on a cylinder around the trunk so it rotates with
+      // the tree. Use v as an angle offset.
+      const ang = treeRot + v * Math.PI;
+      const sa = Math.sin(ang);
+      if (sa < 0.05) continue;                 // hide back-of-tree lights
+      const px2 = (TREE_CX + Math.cos(ang) * hw * 0.85) | 0;
+      const py2 = TREE_BASE_Y + dy;
+      // Per-light blink: each has its own frequency and phase.
+      const freq = 2.0 + (r1 - Math.floor(r1)) * 3.0;
+      const phase = i * 1.7;
+      const blink = 0.5 + 0.5 * Math.sin(tt * freq + phase);
+      if (blink < 0.45) continue;
+      const intensity = (blink - 0.45) / 0.55;
+      // Warm white/yellow/red/blue/green palette.
+      const palette = [
+        [255, 240, 180], [255, 180,  90], [255,  90,  90],
+        [120, 180, 255], [140, 255, 160], [255, 220, 255],
+      ];
+      const [lr, lg, lb] = palette[i % palette.length];
+      plotShade(px2, py2, lr, lg, lb, Math.min(1, intensity * sa));
+      // Soft 1-px halo (cross pattern) for stronger blinks.
+      if (intensity > 0.5) {
+        const h = (intensity - 0.5) * 0.6 * sa;
+        plotShade(px2 + 1, py2, lr, lg, lb, h);
+        plotShade(px2 - 1, py2, lr, lg, lb, h);
+        plotShade(px2, py2 + 1, lr, lg, lb, h);
+        plotShade(px2, py2 - 1, lr, lg, lb, h);
+      }
+    }
+
+    // 4c) Drifting snow caps on the front edges of each triangle tier.
+    // Settled snow that brightens the lit side of the tree.
+    for (const t of TRI) {
+      for (let yy = 0; yy < 2; yy++) {
+        const py2 = TREE_BASE_Y + t.apex + yy;
+        if (py2 < 0 || py2 >= VH) continue;
+        for (let xx = -(yy + t.half - 1); xx <= (yy + t.half - 1); xx++) {
+          // Only the bottom of each tier (boughs edge) gets snow.
+          const atEdge = yy === 0 ? false : (xx === -(yy) || xx === yy);
+          if (!atEdge) continue;
+          plotShade(TREE_CX + xx, py2, 230, 240, 255, 0.55);
+        }
+      }
+      // Snow line along the bottom edge of each tier.
+      const py2 = TREE_BASE_Y + t.apex + t.half - 1;
+      for (let xx = -(t.half - 1); xx <= (t.half - 1); xx += 2) {
+        const noise = Math.sin(xx * 2.3 + t.apex) * 0.5 + 0.5;
+        if (noise > 0.4) {
+          plotShade(TREE_CX + xx, py2, 235, 245, 255, 0.45 + noise * 0.3);
+        }
+      }
+    }
+
     // 5) Orbiting ornaments.
     for (const o of ORNAMENTS) {
       const hw = treeHalfWidth(o.hy);
@@ -336,20 +402,38 @@ void main(){ v_uv = a_pos * 0.5 + 0.5; gl_Position = vec4(a_pos, 0.0, 1.0); }
       plotShade(px2 - 1, py2 - 1, 255, 250, 220, 0.35 * front);
     }
     // 6) Star on top: 5-pointed shimmering star anchored at apex of the
-    // smallest triangle.
+    // smallest triangle, now with a soft pulsing halo and longer rays.
     const starY = TREE_BASE_Y + TRI[0].apex - 2;
     const twinkle = 0.7 + 0.3 * Math.sin(tt * 4);
+    // Soft halo: 5x5 falloff around the star.
+    for (let hy = -3; hy <= 3; hy++) {
+      for (let hx = -3; hx <= 3; hx++) {
+        const d = Math.sqrt(hx * hx + hy * hy);
+        if (d < 0.5 || d > 3.2) continue;
+        const k = Math.max(0, (3.2 - d) / 3.2) * 0.35 * twinkle;
+        plotShade(TREE_CX + hx, starY + hy, 255, 230, 140, k);
+      }
+    }
     const sr = 255, sg = (210 + 20 * twinkle) | 0, sb = (90 + 30 * twinkle) | 0;
     plotScene(TREE_CX, starY, sr, sg, sb);
     plotScene(TREE_CX + 1, starY, sr, sg, sb);
     plotScene(TREE_CX - 1, starY, sr, sg, sb);
     plotScene(TREE_CX, starY - 1, sr, sg, sb);
     plotScene(TREE_CX, starY + 1, sr, sg, sb);
-    // Diagonal rays that pulse.
+    // Rays that pulse longer on stronger twinkles.
+    plotScene(TREE_CX + 2, starY, 255, 230, 130);
+    plotScene(TREE_CX - 2, starY, 255, 230, 130);
+    plotScene(TREE_CX, starY - 2, 255, 230, 130);
+    plotScene(TREE_CX, starY + 2, 255, 230, 130);
     if (twinkle > 0.85) {
-      plotScene(TREE_CX + 2, starY, 255, 230, 130);
-      plotScene(TREE_CX - 2, starY, 255, 230, 130);
-      plotScene(TREE_CX, starY - 2, 255, 230, 130);
+      plotScene(TREE_CX + 3, starY, 255, 220, 110);
+      plotScene(TREE_CX - 3, starY, 255, 220, 110);
+      plotScene(TREE_CX, starY - 3, 255, 220, 110);
+      // Diagonal twinkle sparks.
+      plotShade(TREE_CX + 2, starY - 2, 255, 230, 160, 0.6);
+      plotShade(TREE_CX - 2, starY - 2, 255, 230, 160, 0.6);
+      plotShade(TREE_CX + 2, starY + 2, 255, 230, 160, 0.6);
+      plotShade(TREE_CX - 2, starY + 2, 255, 230, 160, 0.6);
     }
   }
 
