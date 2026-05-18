@@ -80,6 +80,53 @@ void main() {
 }
 `;
 
+const FS_VHS = `#version 300 es
+precision highp float;
+in vec2 v_uv;
+out vec4 outColor;
+uniform sampler2D u_tex;
+uniform float u_t;
+uniform float u_inDir;
+uniform float u_time;
+float h(float x){ return fract(sin(x*12.9898) * 43758.5453); }
+void main() {
+  float k = mix(1.0 - u_t, u_t, u_inDir);     // 1=clean, 0=mangled
+  float m = 1.0 - k;                            // mangle amount
+  vec2 uv = v_uv;
+  // Per-row tear: occasional rows shift hard horizontally.
+  float row = floor(uv.y * 96.0);
+  float tearRand = h(row + floor(u_time * 18.0));
+  uv.x += (step(0.92, tearRand) * (tearRand - 0.5) * 0.25) * m;
+  // VHS tracking band: a vertical band of heavy distortion slides down the
+  // frame as the transition runs.
+  float bandPos = mod(u_time * 0.7 + (1.0 - k), 1.2) - 0.1;
+  float bandMask = smoothstep(0.10, 0.0, abs(uv.y - bandPos));
+  uv.x += (h(row * 1.7 + u_time) - 0.5) * 0.12 * bandMask * m;
+  uv.y += (h(row * 0.31) - 0.5) * 0.01 * bandMask * m;
+  // Chroma split that gets worse with m.
+  float ca = 0.012 * m + 0.004;
+  float wobble = sin(uv.y * 120.0 + u_time * 18.0) * ca;
+  vec3 c;
+  c.r = texture(u_tex, vec2(uv.x + wobble, uv.y)).r;
+  c.g = texture(u_tex, uv).g;
+  c.b = texture(u_tex, vec2(uv.x - wobble, uv.y)).b;
+  // Scanline darkening.
+  float scan = 0.85 + 0.15 * sin(uv.y * 600.0);
+  c *= mix(1.0, scan, 0.4 * m + 0.1);
+  // Grain.
+  float grain = h(floor(uv.x * 320.0) + floor(uv.y * 256.0) * 7.0 + u_time * 31.0);
+  c += (grain - 0.5) * 0.10 * m;
+  // Letterbox bars fade in toward the mangled state.
+  float bar = 0.12 * m;
+  if (uv.y < bar || uv.y > 1.0 - bar) c = vec3(0.0);
+  // Edge wobble of bars (tracking artifact).
+  if (abs(uv.y - bar) < 0.004 || abs(uv.y - (1.0 - bar)) < 0.004) {
+    c = mix(c, vec3(0.9, 0.85, 0.8), 0.5 * m);
+  }
+  outColor = vec4(c, 1.0);
+}
+`;
+
 let progs = null;
 
 function ensure(gl) {
@@ -89,6 +136,7 @@ function ensure(gl) {
     wipe:  build(gl, FS_WIPE),
     flash: build(gl, FS_FLASH),
     tear:  build(gl, FS_TEAR),
+    vhs:   build(gl, FS_VHS),
   };
   return progs;
 }
