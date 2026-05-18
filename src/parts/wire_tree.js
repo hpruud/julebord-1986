@@ -144,12 +144,102 @@ export function wire_tree(gl) {
     [240, 120, 200], [255, 180,  80], [180, 220, 240], [220, 220, 130],
   ];
 
+  // Ornament positions: dots distributed around each ring, slightly offset
+  // outward so they sit on the branch silhouette. Each has its own phase so
+  // they twinkle out of sync.
+  const ornaments = [];
+  {
+    const ringSpec = [
+      [ 0, 50, 14], [18, 40, 12], [36, 30, 10], [54, 20,  8], [72, 10,  6],
+    ];
+    let phase = 0;
+    for (const [cy, radius, n] of ringSpec) {
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + (cy * 0.13);
+        ornaments.push({
+          p: [Math.cos(a) * radius, cy + 1, Math.sin(a) * radius],
+          phase: phase++ * 0.41,
+        });
+      }
+    }
+  }
+
+  // Garland helix: a stream of points winding 3.5 turns from the bottom ring
+  // up to the top ring. Rendered as colored short segments that "march" with
+  // a hue cycle so it looks like running Christmas lights.
+  const GARLAND_N = 120;
+  const garland = [];
+  for (let i = 0; i < GARLAND_N; i++) {
+    const t = i / (GARLAND_N - 1);
+    // Radius tapers linearly from 50 (bottom) to 8 (top); y from -2 to 82.
+    const r = 50 - t * 42;
+    const y = -2 + t * 84;
+    const a = t * Math.PI * 2 * 3.5;
+    garland.push([Math.cos(a) * r, y, Math.sin(a) * r]);
+  }
+
+  // Falling snow: 2D screen-space particles. Pre-seeded with random y so the
+  // first frame already has snow everywhere.
+  const SNOW_N = 70;
+  const snow = [];
+  for (let i = 0; i < SNOW_N; i++) {
+    snow.push({
+      x: Math.random() * VW,
+      y: Math.random() * VH,
+      vy: 12 + Math.random() * 22,
+      vx: (Math.random() - 0.5) * 4,
+      sway: Math.random() * Math.PI * 2,
+      bright: 180 + ((Math.random() * 60) | 0),
+    });
+  }
+
   let tt = 0, lastT = 0;
 
   function plot(x, y, r, g, b) {
     if (x < 0 || x >= VW || y < 0 || y >= VH) return;
     const j = ((y | 0) * VW + (x | 0)) * 4;
     buf[j] = r; buf[j+1] = g; buf[j+2] = b; buf[j+3] = 255;
+  }
+
+  function plotAdd(x, y, r, g, b) {
+    // Additive plot for overlapping bright particles (snow, sparkles).
+    if (x < 0 || x >= VW || y < 0 || y >= VH) return;
+    const j = ((y | 0) * VW + (x | 0)) * 4;
+    buf[j]   = Math.min(255, buf[j]   + r);
+    buf[j+1] = Math.min(255, buf[j+1] + g);
+    buf[j+2] = Math.min(255, buf[j+2] + b);
+    buf[j+3] = 255;
+  }
+
+  function filledDisc(cx, cy, r, R, G, B) {
+    const x0 = (cx - r) | 0, x1 = (cx + r) | 0;
+    const y0 = (cy - r) | 0, y1 = (cy + r) | 0;
+    const r2 = r * r;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = x0; x <= x1; x++) {
+        const dx = x + 0.5 - cx, dy = y + 0.5 - cy;
+        if (dx * dx + dy * dy <= r2) plot(x, y, R, G, B);
+      }
+    }
+  }
+
+  // HSV->RGB, h in [0,1], s,v in [0,1].
+  function hsv(h, s, v) {
+    const i = Math.floor(h * 6);
+    const f = h * 6 - i;
+    const p = v * (1 - s);
+    const q = v * (1 - f * s);
+    const t = v * (1 - (1 - f) * s);
+    let r, g, b;
+    switch (i % 6) {
+      case 0: r = v; g = t; b = p; break;
+      case 1: r = q; g = v; b = p; break;
+      case 2: r = p; g = v; b = t; break;
+      case 3: r = p; g = q; b = v; break;
+      case 4: r = t; g = p; b = v; break;
+      default: r = v; g = p; b = q;
+    }
+    return [(r * 255) | 0, (g * 255) | 0, (b * 255) | 0];
   }
 
   function thickLine(x0, y0, x1, y1, r, g, b) {
@@ -209,16 +299,65 @@ export function wire_tree(gl) {
       }
 
       // Build the dynamic gift edges this frame. Presents sit on a slow
-      // turntable below the tree base, well clear of the lowest tier.
+      // turntable below the tree base, well clear of the lowest tier, and
+      // each box also spins on its own Y axis with a little vertical bob.
       const dynamic = [];
       for (let i = 0; i < 8; i++) {
         const phase = (i / 8) * Math.PI * 2 + tt * 0.35;
         const orbitR = 64;
         const cx = Math.cos(phase) * orbitR;
         const cz = Math.sin(phase) * orbitR;
-        const cy = -8 + Math.sin(tt * 0.9 + i) * 1.5;
+        const cy = -8 + Math.sin(tt * 1.6 + i * 0.7) * 2.5;
         const size = 8 + (i % 3);
-        dynamic.push(...cubeEdges(cx, cy, cz, size, giftColors[i]));
+        const spin = tt * (0.9 + (i % 3) * 0.3) + i;
+        const cs = Math.cos(spin), sn = Math.sin(spin);
+        const h = size / 2;
+        const v = [
+          [-h,-h,-h], [ h,-h,-h], [ h, h,-h], [-h, h,-h],
+          [-h,-h, h], [ h,-h, h], [ h, h, h], [-h, h, h],
+        ].map(([vx, vy, vz]) => {
+          const rx = vx * cs + vz * sn;
+          const rz = -vx * sn + vz * cs;
+          return [cx + rx, cy + vy, cz + rz];
+        });
+        const cubeE = [
+          [0,1],[1,2],[2,3],[3,0],
+          [4,5],[5,6],[6,7],[7,4],
+          [0,4],[1,5],[2,6],[3,7],
+        ];
+        const col = giftColors[i];
+        for (const [a, b] of cubeE) {
+          dynamic.push([
+            v[a][0], v[a][1], v[a][2],
+            v[b][0], v[b][1], v[b][2],
+            col[0], col[1], col[2],
+          ]);
+        }
+        // Bow ribbons across the top face: short cross of contrasting edges.
+        const bowH = h + 0.2;
+        const bowCol = [255, 240, 180];
+        dynamic.push([
+          cx - h * cs, cy + bowH, cz + h * sn,
+          cx + h * cs, cy + bowH, cz - h * sn,
+          bowCol[0], bowCol[1], bowCol[2],
+        ]);
+        dynamic.push([
+          cx + h * sn, cy + bowH, cz + h * cs,
+          cx - h * sn, cy + bowH, cz - h * cs,
+          bowCol[0], bowCol[1], bowCol[2],
+        ]);
+      }
+
+      // Garland: short segments connecting consecutive helix points, hue-
+      // shifted along their position so the whole spiral looks like running
+      // lights chasing up the tree.
+      for (let i = 0; i < garland.length - 1; i++) {
+        const c = hsv(((i / 12) + tt * 0.6) % 1, 0.95, 1);
+        dynamic.push([
+          garland[i][0], garland[i][1], garland[i][2],
+          garland[i + 1][0], garland[i + 1][1], garland[i + 1][2],
+          c[0], c[1], c[2],
+        ]);
       }
 
       const all = edges.concat(dynamic);
@@ -233,6 +372,53 @@ export function wire_tree(gl) {
         const g = (e[7] * fade) | 0;
         const bb = (e[8] * fade) | 0;
         line(a[0], a[1], b[0], b[1], r, g, bb);
+      }
+
+      // Twinkling ornaments: project each, draw a filled disc whose color
+      // pulses through HSV space and whose radius breathes.
+      for (const o of ornaments) {
+        const p = project(o.p);
+        if (!p) continue;
+        const pulse = 0.5 + 0.5 * Math.sin(tt * 4.2 + o.phase * 5.3);
+        const c = hsv((o.phase + tt * 0.25) % 1, 0.8, 0.55 + pulse * 0.45);
+        const fade = Math.max(0.3, Math.min(1, 1 - (p[2] - 160) / 160));
+        const r = 1.3 + pulse * 1.5;
+        filledDisc(p[0], p[1], r, (c[0] * fade) | 0, (c[1] * fade) | 0, (c[2] * fade) | 0);
+      }
+
+      // Star sparkles: short radial spokes emanating from the star center,
+      // rotating slowly and pulsing in length.
+      const starP = project([0, 90, 0]);
+      if (starP) {
+        const pulse = 0.5 + 0.5 * Math.sin(tt * 3.0);
+        const len = 9 + pulse * 7;
+        const baseAng = tt * 0.9;
+        for (let i = 0; i < 8; i++) {
+          const a = baseAng + (i / 8) * Math.PI * 2;
+          const ex = starP[0] + Math.cos(a) * len;
+          const ey = starP[1] + Math.sin(a) * len;
+          const c = (180 + pulse * 75) | 0;
+          line(starP[0], starP[1], ex, ey, c, c, (c * 0.6) | 0);
+        }
+        // Bright core
+        filledDisc(starP[0], starP[1], 2 + pulse * 1.5, 255, 250, 200);
+      }
+
+      // Snow particles: update position then draw as additive small dots.
+      for (const s of snow) {
+        s.sway += dt * 2;
+        s.x += (s.vx + Math.sin(s.sway) * 6) * dt;
+        s.y += s.vy * dt;
+        if (s.y >= VH) {
+          s.y = -2;
+          s.x = Math.random() * VW;
+        }
+        if (s.x < 0) s.x += VW;
+        else if (s.x >= VW) s.x -= VW;
+        const b = s.bright;
+        plotAdd(s.x, s.y, b, b, b);
+        plotAdd(s.x + 1, s.y, (b * 0.55) | 0, (b * 0.55) | 0, (b * 0.55) | 0);
+        plotAdd(s.x, s.y + 1, (b * 0.55) | 0, (b * 0.55) | 0, (b * 0.55) | 0);
       }
 
       gl.bindTexture(gl.TEXTURE_2D, tex);
