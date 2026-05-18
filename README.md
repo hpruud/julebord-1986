@@ -42,28 +42,33 @@ see "Run it" above). The song loops continuously.
 
 ## What's in it
 
-20 parts (see `src/timeline.js` for the authoritative order):
+25 parts (see `src/timeline.js` for the authoritative order):
 
 1. Intro logo — "JULEBORD 1986 DEMO" title
 2. Starfield — 3-layer parallax with Santa silhouette
 3. Copper bars — sweeping horizontal bars with ACADEMY chunky-font overlay
 4. Plasma — classic palette-cycled plasma
-5. Bobs — additive sprite swarm
-6. Fire — CPU cellular-automaton fire effect
-7. Bobs+Fire — composite of the above
-8. Rotozoomer — rotated/zoomed procedural texture
-9. Mandelbrot — single-precision zoom into Seahorse Valley
-10. Glenz vectors — translucent additive cube (premultiplied alpha)
-11. Glenz vectors x4 — 2x2 grid of glenz cubes
-12. Mandelbrot deep — perturbation-theory deep zoom
-13. ACADEMY tech-tech — wobbling Christmas-colored ACADEMY logo with "JULEBORD 1986" subtitle
-14. Julia — animated Julia set with orbiting `c`
-15. Greetz scroller — vertical greetings
-16. Tunnel — angular/radial palette-cycled tunnel
-17. Sine scroller — horizontal scroll text with vertical sine wobble
-18. Vector cube — 3D point cube with palette-shaded sphere bobs
-19. Battle — moonlit snowy forest with X-wings, TIE fighters, Star Destroyer, and Santa flying past the moon
-20. Outro credits — "A production by Julebord 2026" with falling snow
+5. XOR pattern — animated `(x^y)` bitplane texture, palette-cycled
+6. Bobs — additive sprite swarm
+7. Fire — CPU cellular-automaton fire effect
+8. Bobs+Fire — composite of the above
+9. Metaballs — palette-cycled blobby field with 6 orbiting centers
+10. Rotozoomer — rotated/zoomed procedural texture
+11. Checker floor — pseudo-3D scrolling candy-cane floor under a starry sky
+12. Mandelbrot — single-precision zoom into Seahorse Valley
+13. Glenz vectors — translucent additive cube (premultiplied alpha)
+14. Glenz vectors x4 — 2x2 grid of glenz cubes
+15. Mandelbrot deep — perturbation-theory deep zoom
+16. Water ripple — heightmap ripple over a snowflake + "JULEBORD" image
+17. ACADEMY tech-tech — wobbling Christmas-colored ACADEMY logo with "JULEBORD 1986" subtitle
+18. Julia — animated Julia set with orbiting `c`
+19. Greetz scroller — vertical greetings
+20. Tunnel — angular/radial palette-cycled tunnel
+21. Sine scroller — horizontal scroll text with vertical sine wobble
+22. Vector cube — 3D point cube with palette-shaded sphere bobs
+23. Battle — moonlit snowy forest with X-wings, TIE fighters, Star Destroyer, and Santa flying past the moon
+24. Snow globe — pixel-art Christmas tree with parallax snowfall under a glass-dome vignette
+25. Outro credits — "A production by Julebord 2026" with falling snow
 
 ## Architecture
 

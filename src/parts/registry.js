@@ -18,6 +18,11 @@ import { intro_logo } from './intro_logo.js';
 import { outro_credits } from './outro_credits.js';
 import { battle } from './battle.js';
 import { academy_techtech } from './academy_techtech.js';
+import { xorpattern } from './xorpattern.js';
+import { metaballs } from './metaballs.js';
+import { checkerfloor } from './checkerfloor.js';
+import { waterripple } from './waterripple.js';
+import { snowglobe } from './snowglobe.js';
 
 export const parts = {
   plasma,
@@ -40,4 +45,9 @@ export const parts = {
   outro_credits,
   battle,
   academy_techtech,
+  xorpattern,
+  metaballs,
+  checkerfloor,
+  waterripple,
+  snowglobe,
 };
