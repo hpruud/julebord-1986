@@ -92,7 +92,7 @@ export const TEXT = {
       ['A PRODUCTION BY', 1],
       ['ACADEMY IN 2026', 2],
       ['', 1],
-      ['THE END - PRESS SPACE TO RESTART', 1],
+      ['THE END - PRESS SPACE OR CLICK TO RESTART', 1],
     ],
   },
 };
