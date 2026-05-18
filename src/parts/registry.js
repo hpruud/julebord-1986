@@ -25,6 +25,7 @@ import { waterripple } from './waterripple.js';
 import { snowglobe } from './snowglobe.js';
 import { kaleido } from './kaleido.js';
 import { fireworks } from './fireworks.js';
+import { santa_multiplex } from './santa_multiplex.js';
 
 export const parts = {
   plasma,
@@ -54,4 +55,5 @@ export const parts = {
   snowglobe,
   kaleido,
   fireworks,
+  santa_multiplex,
 };

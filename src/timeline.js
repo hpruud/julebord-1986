@@ -10,6 +10,7 @@ export const TIMELINE = {
     { id: 'bobs',           dur: 14000, transitionIn: 'vhs',   transitionOut: 'flash' },
     { id: 'fire',           dur: 14000, transitionIn: 'fade',  transitionOut: 'wipe'  },
     { id: 'bobsfire',       dur: 14000, transitionIn: 'fade',  transitionOut: 'flash' },
+    { id: 'santa_multiplex',dur: 14000, transitionIn: 'wipe',  transitionOut: 'flash' },
     { id: 'metaballs',      dur: 14000, transitionIn: 'fade',  transitionOut: 'wipe'  },
     { id: 'rotozoom',       dur: 16000, transitionIn: 'wipe',  transitionOut: 'flash' },
     { id: 'checkerfloor',   dur: 14000, transitionIn: 'wipe',  transitionOut: 'flash' },
