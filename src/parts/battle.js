@@ -639,7 +639,15 @@ function buildSanta() {
   // The lead reindeer is the rightmost one (closest to the sleigh).
   // i = 3 corresponds to the front of the team since we draw moving right.
   const leadX = 3 * 10;
-  rect(leadX + 5, 4, 1, 1, ...RED_NOSE);   // glowing nose pixel
+  // Big glowing nose: extend the snout one pixel further forward, paint a
+  // 2x2 red core at the tip, and add a 1-px red halo above/below so the
+  // nose visibly glows against the night sky.
+  const NOSE_GLOW = [1.00, 0.45, 0.35];
+  rect(leadX + 6, 3, 1, 1, ...BROWN_BODY);    // extra snout pixel
+  rect(leadX + 5, 3, 2, 2, ...RED_NOSE);      // 2x2 bright red nose
+  rect(leadX + 5, 2, 2, 1, ...NOSE_GLOW);     // glow above
+  rect(leadX + 5, 5, 2, 1, ...NOSE_GLOW);     // glow below
+  rect(leadX + 7, 3, 1, 2, ...NOSE_GLOW);     // glow in front
 
   // ----- Reins: thin gold lines from sleigh to each reindeer's head -----
   // (Drawn as 1-px-tall horizontal strips between reindeer; cheap but reads.)
