@@ -601,11 +601,11 @@ function buildSanta() {
   const SKIN        = [0.95, 0.78, 0.62];   // Santa face
   const WHITE       = [0.96, 0.96, 0.96];   // beard / hat trim
 
-  // ----- Four reindeer in a row, each occupying a 10-px-wide slot -----
+  // ----- Eight reindeer in a row, each occupying a 10-px-wide slot -----
   // Reindeer silhouette (8x10 px):
   //   Antlers at top, head, body, four legs.
   // Stride: 10 px between reindeer fronts.
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 8; i++) {
     const ox = i * 10;
     // Antlers (two 1px stems with a 1px branch each, mostly decorative)
     rect(ox + 1, 0, 1, 2, ...BROWN_DARK);
@@ -636,9 +636,10 @@ function buildSanta() {
   }
 
   // ----- Lead reindeer's red nose (Rudolph) -----
-  // The lead reindeer is the rightmost one (closest to the sleigh).
-  // i = 3 corresponds to the front of the team since we draw moving right.
-  const leadX = 3 * 10;
+  // The mesh is mirrored horizontally below so the sleigh ends up on the
+  // LEFT and the reindeer extend to the RIGHT; i=0 here becomes the
+  // rightmost (front-of-team) reindeer = Rudolph.
+  const leadX = 0;
   // Big glowing nose: extend the snout one pixel further forward, paint a
   // 2x2 red core at the tip, and add a 1-px red halo above/below so the
   // nose visibly glows against the night sky.
@@ -651,14 +652,14 @@ function buildSanta() {
 
   // ----- Reins: thin gold lines from sleigh to each reindeer's head -----
   // (Drawn as 1-px-tall horizontal strips between reindeer; cheap but reads.)
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 8; i++) {
     const x0 = i * 10 + 5;     // approx head of this reindeer
-    const x1 = (i + 1) * 10;   // approx tail of next (or sleigh start at 40)
+    const x1 = (i + 1) * 10;   // approx tail of next (or sleigh start at 80)
     if (x1 > x0) rect(x0, 4, x1 - x0, 1, ...GOLD);
   }
 
-  // ----- Sleigh at x=42..60 (18px wide, 8px tall body + runners) -----
-  const sx = 42;
+  // ----- Sleigh at x=82..100 (18px wide, 8px tall body + runners) -----
+  const sx = 82;
   // Sleigh body main (deep red)
   rect(sx + 0, 6, 16, 4, ...RED_SLEIGH);
   // Curved front lip (rises up to the front)
