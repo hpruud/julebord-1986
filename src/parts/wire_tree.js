@@ -306,7 +306,8 @@ export function wire_tree(gl) {
         // Each gift has its own orbital speed/direction, breathing radius,
         // and vertical hop so they all swirl around the tree at different
         // tempos instead of orbiting in lockstep.
-        const dir       = (i % 2 === 0) ? 1 : -1;
+        // All presents orbit clockwise (viewed from above).
+        const dir       = 1;
         const speed     = 0.55 + (i % 4) * 0.18;
         const phase     = (i / 8) * Math.PI * 2 + tt * speed * dir;
         const orbitR    = 60 + Math.sin(tt * 0.9 + i * 1.3) * 10;
