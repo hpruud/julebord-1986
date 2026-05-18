@@ -150,15 +150,24 @@ vec4 santaSprite(vec2 q) {
   vec3 reinCol    = vec3(0.10, 0.06, 0.04);
   vec3 noseRed    = vec3(0.98, 0.20, 0.16);
   vec3 sackCol    = vec3(0.45, 0.32, 0.18);
+  vec3 cheekCol   = vec3(0.98, 0.55, 0.50);
+  vec3 mittenCol  = vec3(0.10, 0.08, 0.08);
+  vec3 ribbonCol  = vec3(0.95, 0.90, 0.30);
 
   vec3 col = vec3(0.0);
   float a = 0.0;
 
-  // Reins: two thin lines from sleigh stretching up toward the team.
+  // Reins: two thin lines from sleigh stretching up toward the team, then
+  // forward toward Rudolph (the lead reindeer).
   for (int s = 0; s < 2; s++) {
     float sx = (float(s) - 0.5) * 2.0 * 0.020;
     float line = step(abs(q.x - sx), 0.0022) * step(-0.115, q.y) * step(q.y, 0.030);
     if (line > 0.0) { col = reinCol; a = max(a, line * 0.85); }
+  }
+  // Center rein leading to Rudolph up front.
+  {
+    float lead = step(abs(q.x), 0.0022) * step(-0.180, q.y) * step(q.y, -0.105);
+    if (lead > 0.0) { col = reinCol; a = max(a, lead * 0.85); }
   }
 
   // Reindeer team: 3 rows of 2, far rows drawn first so near rows overdraw.
@@ -188,21 +197,96 @@ vec4 santaSprite(vec2 q) {
       float head = smoothstep(r * 0.55, r * 0.40, length(hp * vec2(1.2, 1.0)));
       if (head > 0.0) { col = mix(col, deerCol, head); a = max(a, head); }
 
-      // Rudolph (front-row, left reindeer): glowing red nose.
-      if (i == 0 && s == 0) {
-        float nose = smoothstep(r * 0.18, r * 0.08, length(hp - vec2(0.0, -r * 0.20)));
-        if (nose > 0.0) { col = mix(col, noseRed, nose); a = max(a, nose); }
+      // Two tiny black eyes on the head.
+      for (int e = 0; e < 2; e++) {
+        float ex = (float(e) - 0.5) * 2.0 * r * 0.22;
+        float eye = smoothstep(r * 0.07, r * 0.03, length(hp - vec2(ex, -r * 0.05)));
+        if (eye > 0.0) col = mix(col, reinCol, eye);
       }
 
-      // Forked antlers: two diagonal branches forming a V above the head.
+      // Harness collar with a tiny gold bell hanging beneath the head.
+      vec2 cp = rp - vec2(0.0, -r * 0.55);
+      float collar = step(abs(cp.y), r * 0.06) * step(abs(cp.x), r * 0.55);
+      if (collar > 0.0) col = mix(col, sleighCol, collar);
+      float bell = smoothstep(r * 0.10, r * 0.05, length(cp - vec2(0.0, r * 0.10)));
+      if (bell > 0.0) { col = mix(col, buckle, bell); a = max(a, bell); }
+
+      // Forked antlers: two diagonal branches forming a V above the head,
+      // plus a small inner branch for a bushier silhouette.
       for (int b = 0; b < 2; b++) {
         float dir = float(b) * 2.0 - 1.0;
         vec2 ap = rp - vec2(0.0, -r * 1.05);
         float branch = step(abs(ap.x + dir * ap.y * 0.55), r * 0.09)
                      * step(-antH, ap.y) * step(ap.y, 0.0);
         if (branch > 0.0) { col = mix(col, antlerCol, branch); a = max(a, branch * 0.95); }
+        // Small inner fork.
+        float inner = step(abs(ap.x + dir * (ap.y + antH * 0.45) * 1.10), r * 0.07)
+                    * step(-antH * 0.55, ap.y) * step(ap.y, -antH * 0.20);
+        if (inner > 0.0) { col = mix(col, antlerCol, inner); a = max(a, inner * 0.9); }
       }
     }
+  }
+
+  // Rudolph: lead reindeer up front, centered, with a big glowing red nose.
+  {
+    float persp = 1.0 - 3.0 * 0.22;            // matches "row 3" perspective
+    float yRow  = -0.025 - 3.0 * 0.047;
+    float r     = 0.014 * persp;
+    float antH  = 0.028 * persp;
+    float bob   = sin(u_time * 8.0 + 3.9) * 0.004 * persp;
+    vec2 rp = q - vec2(0.0, yRow + bob);
+
+    // Body.
+    float body = smoothstep(r, r * 0.78, length(rp * vec2(1.3, 1.0)));
+    if (body > 0.0) { col = mix(col, deerCol, body); a = max(a, body); }
+    vec2 bep = rp - vec2(0.0, r * 0.45);
+    float belly = smoothstep(r * 0.55, r * 0.35, length(bep * vec2(1.7, 1.3)));
+    if (belly > 0.0) col = mix(col, deerBelly, belly * 0.75);
+
+    // Head.
+    vec2 hp = rp - vec2(0.0, -r * 0.95);
+    float head = smoothstep(r * 0.60, r * 0.42, length(hp * vec2(1.2, 1.0)));
+    if (head > 0.0) { col = mix(col, deerCol, head); a = max(a, head); }
+
+    // Eyes.
+    for (int e = 0; e < 2; e++) {
+      float ex = (float(e) - 0.5) * 2.0 * r * 0.24;
+      float eye = smoothstep(r * 0.08, r * 0.035, length(hp - vec2(ex, -r * 0.08)));
+      if (eye > 0.0) col = mix(col, reinCol, eye);
+    }
+
+    // Harness collar + bell.
+    vec2 cp = rp - vec2(0.0, -r * 0.55);
+    float collar = step(abs(cp.y), r * 0.07) * step(abs(cp.x), r * 0.60);
+    if (collar > 0.0) col = mix(col, sleighCol, collar);
+    float bell = smoothstep(r * 0.12, r * 0.05, length(cp - vec2(0.0, r * 0.11)));
+    if (bell > 0.0) { col = mix(col, buckle, bell); a = max(a, bell); }
+
+    // Antlers (bushier).
+    for (int b = 0; b < 2; b++) {
+      float dir = float(b) * 2.0 - 1.0;
+      vec2 ap = rp - vec2(0.0, -r * 1.10);
+      float branch = step(abs(ap.x + dir * ap.y * 0.55), r * 0.10)
+                   * step(-antH * 1.15, ap.y) * step(ap.y, 0.0);
+      if (branch > 0.0) { col = mix(col, antlerCol, branch); a = max(a, branch * 0.95); }
+      float inner = step(abs(ap.x + dir * (ap.y + antH * 0.55) * 1.10), r * 0.08)
+                  * step(-antH * 0.65, ap.y) * step(ap.y, -antH * 0.20);
+      if (inner > 0.0) { col = mix(col, antlerCol, inner); a = max(a, inner * 0.9); }
+    }
+
+    // Big glowing red nose with halo. The halo brightens with a slow sine
+    // so it really sells the "glow".
+    float pulse = 0.85 + 0.15 * sin(u_time * 5.5);
+    vec2 np = hp - vec2(0.0, -r * 0.32);
+    // Outer halo (additive feel via mix with bright red).
+    float halo = smoothstep(r * 0.70, r * 0.25, length(np)) * 0.55 * pulse;
+    if (halo > 0.0) { col = mix(col, noseRed * 1.05, halo); a = max(a, halo * 0.7); }
+    // Inner bright core.
+    float nose = smoothstep(r * 0.30, r * 0.16, length(np));
+    if (nose > 0.0) { col = mix(col, vec3(1.0, 0.55, 0.45) * pulse, nose); a = max(a, nose); }
+    // Tiny white highlight on the nose for "shiny".
+    float hi = smoothstep(r * 0.10, r * 0.04, length(np - vec2(-r * 0.08, -r * 0.08)));
+    if (hi > 0.0) col = mix(col, vec3(1.0, 0.95, 0.90), hi * 0.9);
   }
 
   // Sleigh runners: thin rails below the hull with curled front tips.
@@ -224,10 +308,31 @@ vec4 santaSprite(vec2 q) {
   float trim = step(abs(sp.y + 0.020), 0.0028) * step(abs(sp.x), 0.046);
   if (trim > 0.0) { col = mix(col, sleighTrim, trim); a = max(a, trim); }
 
+  // Decorative gold star on the side of the sleigh (back-right corner).
+  vec2 starP = q - vec2(0.026, 0.050);
+  float starR = length(starP);
+  float starA = atan(starP.y, starP.x);
+  float starShape = starR < 0.012
+    ? smoothstep(0.012 + sin(starA * 5.0) * 0.004, 0.004, starR) : 0.0;
+  if (starShape > 0.0) col = mix(col, sleighTrim, starShape);
+
+  // A second little star mirrored on the left.
+  vec2 starP2 = q - vec2(-0.026, 0.050);
+  float starR2 = length(starP2);
+  float starA2 = atan(starP2.y, starP2.x);
+  float starShape2 = starR2 < 0.012
+    ? smoothstep(0.012 + sin(starA2 * 5.0) * 0.004, 0.004, starR2) : 0.0;
+  if (starShape2 > 0.0) col = mix(col, sleighTrim, starShape2);
+
   // Gift sack peeking out the back of the sleigh.
   vec2 sk = q - vec2(-0.030, 0.030);
   float sack = smoothstep(0.017, 0.011, length(sk * vec2(1.0, 1.2)));
   if (sack > 0.0) { col = mix(col, sackCol, sack); a = max(a, sack); }
+  // Golden ribbon tied around the sack.
+  float ribbonBand = step(abs(sk.y), 0.0022) * step(abs(sk.x), 0.014);
+  if (ribbonBand > 0.0) col = mix(col, ribbonCol, ribbonBand);
+  float ribbonKnot = smoothstep(0.005, 0.002, length(sk - vec2(0.0, -0.001)));
+  if (ribbonKnot > 0.0) col = mix(col, ribbonCol, ribbonKnot);
 
   // Santa coat.
   vec2 stp = q - vec2(0.0, 0.015);
@@ -241,6 +346,14 @@ vec4 santaSprite(vec2 q) {
   float buckleM = step(abs(stp.y - 0.008), 0.0035) * step(abs(stp.x), 0.0048);
   if (buckleM > 0.0) col = mix(col, buckle, buckleM);
 
+  // Santa's mittens gripping the reins (two black blobs at the sides).
+  for (int m = 0; m < 2; m++) {
+    float mx = (float(m) - 0.5) * 2.0 * 0.020;
+    vec2 mp = q - vec2(mx, -0.005);
+    float mit = smoothstep(0.006, 0.0035, length(mp * vec2(1.0, 1.2)));
+    if (mit > 0.0) { col = mix(col, mittenCol, mit); a = max(a, mit); }
+  }
+
   // White fur trim along the bottom of the coat.
   float bottomFur = step(abs(stp.y - 0.020), 0.0032) * step(abs(stp.x), 0.022);
   if (bottomFur > 0.0) { col = mix(col, fur, bottomFur); a = max(a, bottomFur); }
@@ -249,6 +362,19 @@ vec4 santaSprite(vec2 q) {
   vec2 fp = q - vec2(0.0, -0.005);
   float face = smoothstep(0.012, 0.008, length(fp * vec2(1.0, 1.1)));
   if (face > 0.0) { col = mix(col, skin, face); a = max(a, face); }
+
+  // Rosy cheeks: two soft pink dots on the face.
+  for (int ch = 0; ch < 2; ch++) {
+    float cx = (float(ch) - 0.5) * 2.0 * 0.005;
+    float cheek = smoothstep(0.0030, 0.0014, length(fp - vec2(cx, 0.0)));
+    if (cheek > 0.0) col = mix(col, cheekCol, cheek * 0.85);
+  }
+  // Tiny black eyes on Santa.
+  for (int se = 0; se < 2; se++) {
+    float sex = (float(se) - 0.5) * 2.0 * 0.0035;
+    float seye = smoothstep(0.0014, 0.0006, length(fp - vec2(sex, -0.003)));
+    if (seye > 0.0) col = mix(col, reinCol, seye);
+  }
 
   // White beard wrapping the lower half of the face.
   vec2 bdp = q - vec2(0.0, 0.001);
