@@ -85,55 +85,93 @@ export function fireworks(gl) {
       const b = 160 + ((Math.random() * 80) | 0);
       scene[j] = b; scene[j+1] = b; scene[j+2] = Math.min(255, b + 20);
     }
-    // Glowing full moon, upper-right: soft outer glow, bright core disc,
-    // subtle maria/craters, and a faint cool limb.
-    const mx = VW * 0.78, my = VH * 0.24;
-    const MR = 22;            // core radius
-    const GR = MR * 4.2;      // glow radius
-    // Pseudo-noise helper for crater speckle (deterministic per pixel).
-    const hash = (x, y) => {
-      const s = Math.sin(x * 12.9898 + y * 78.233) * 43758.5453;
-      return s - Math.floor(s);
-    };
-    const gx0 = Math.max(0, (mx - GR) | 0), gx1 = Math.min(VW, (mx + GR) | 0);
-    const gy0 = Math.max(0, (my - GR) | 0), gy1 = Math.min(VH, (my + GR) | 0);
+    // Full moon ported from the spacebattle scene: pixel-art disc with
+    // soft two-stage halo, named maria, Tycho + Copernicus crater
+    // highlights, sinusoidal surface mottling, and cool limb darkening.
+    const mcx = VW * 0.66, mcy = VH * 0.30;
+    const MOON_R = VH * 0.090;        // ~23 px to match the spacebattle moon
+    const HALO_WIDE = MOON_R / 0.09 * 0.32; // outer halo radius (≈82 px)
+    const HALO_TIGHT = MOON_R / 0.09 * 0.16;
+    const gx0 = Math.max(0, (mcx - HALO_WIDE) | 0), gx1 = Math.min(VW, (mcx + HALO_WIDE + 1) | 0);
+    const gy0 = Math.max(0, (mcy - HALO_WIDE) | 0), gy1 = Math.min(VH, (mcy + HALO_WIDE + 1) | 0);
+    const moonCoreR = 255, moonCoreG = 253, moonCoreB = 240; // (1.00, 0.99, 0.94)
     for (let y = gy0; y < gy1; y++) {
       for (let x = gx0; x < gx1; x++) {
-        const dx = x - mx, dy = y - my;
+        const dx = x - mcx, dy = y - mcy;
         const r = Math.sqrt(dx * dx + dy * dy);
+        if (r >= HALO_WIDE) continue;
         const j = (y * VW + x) * 4;
-        if (r >= GR) continue;
-        if (r > MR) {
-          // Outer halo: warm white falloff, additive over sky.
-          const t = 1 - (r - MR) / (GR - MR);
-          const g2 = t * t;                 // soft falloff
-          const g1 = Math.pow(t, 0.55);     // wider, gentler shoulder
-          const ar = (g2 * 150 + g1 * 35) | 0;
-          const ag = (g2 * 140 + g1 * 38) | 0;
-          const ab = (g2 * 110 + g1 * 60) | 0;
-          scene[j]   = Math.min(255, scene[j]   + ar);
-          scene[j+1] = Math.min(255, scene[j+1] + ag);
-          scene[j+2] = Math.min(255, scene[j+2] + ab);
-        } else {
-          // Disc: bright core with mottled maria + edge limb darkening.
-          const u = dx / MR, v = dy / MR;
-          const limb = Math.sqrt(Math.max(0, 1 - (u * u + v * v)));
-          // Maria: a few large dark blobs.
-          const m1 = Math.exp(-((u - 0.25) ** 2 + (v + 0.10) ** 2) * 6.0);
-          const m2 = Math.exp(-((u + 0.30) ** 2 + (v - 0.20) ** 2) * 9.0);
-          const m3 = Math.exp(-((u + 0.05) ** 2 + (v - 0.45) ** 2) * 14.0);
-          const maria = (m1 * 28 + m2 * 22 + m3 * 18);
-          // Crater speckle: fine noise.
-          const n = hash(x, y);
-          const speck = n > 0.94 ? -22 : (n < 0.04 ? 12 : 0);
-          const base = 246 - (1 - limb) * 30; // soft limb darkening
-          const rC = Math.max(0, Math.min(255, base - maria + speck));
-          const gC = Math.max(0, Math.min(255, base - maria * 0.9 + speck));
-          const bC = Math.max(0, Math.min(255, base - maria * 0.75 - (1 - limb) * 14 + speck));
-          scene[j]   = rC | 0;
-          scene[j+1] = gC | 0;
-          scene[j+2] = bC | 0;
-        }
+
+        // Two-stage halo: cool wide + bright tight, additive over the sky.
+        const tw = Math.max(0, 1 - r / HALO_WIDE);
+        const tt2 = Math.max(0, 1 - r / HALO_TIGHT);
+        const haloWide  = tw * tw;            // smoothstep-ish falloff
+        const haloTight = tt2 * tt2;
+        const ar = (haloWide * 0.55 * 0.10 + haloTight * 0.85 * 0.18) * 255;
+        const ag = (haloWide * 0.62 * 0.10 + haloTight * 0.90 * 0.18) * 255;
+        const ab = (haloWide * 0.78 * 0.10 + haloTight * 1.00 * 0.18) * 255;
+        scene[j]   = Math.min(255, scene[j]   + (ar | 0));
+        scene[j+1] = Math.min(255, scene[j+1] + (ag | 0));
+        scene[j+2] = Math.min(255, scene[j+2] + (ab | 0));
+
+        if (r > MOON_R + 0.5) continue;
+        // Disc with 1-pixel anti-aliased edge.
+        const edge = MOON_R + 0.5 - r;             // 1.0 inside, 0..1 across the edge
+        const disc = Math.max(0, Math.min(1, edge));
+
+        // Moon-local UV in [-1..1] across the disc.
+        const u = dx / MOON_R, v = dy / MOON_R;
+
+        // Maria (loose Imbrium, Serenitatis, Tranquillitatis, Nubium, Crisium).
+        const blob = (du, dv, sx, sy, inner, outer, amp) => {
+          const px2 = (u - du) * sx, py2 = (v - dv) * sy;
+          const d = Math.sqrt(px2 * px2 + py2 * py2);
+          const t = 1 - Math.max(0, Math.min(1, (d - inner) / (outer - inner)));
+          return t * t * amp;
+        };
+        let maria = 0;
+        maria += blob(-0.30,  0.30, 1.0, 1.3, 0.10, 0.55, 0.13);
+        maria += blob( 0.25,  0.05, 1.1, 1.0, 0.05, 0.30, 0.11);
+        maria += blob( 0.45, -0.15, 0.9, 1.4, 0.05, 0.32, 0.10);
+        maria += blob(-0.20, -0.40, 1.2, 1.0, 0.05, 0.32, 0.09);
+        maria += blob( 0.65,  0.25, 1.4, 1.0, 0.03, 0.18, 0.10);
+
+        // Surface mottling via stacked sines (cheap fake noise).
+        let mott = Math.sin(u * 18 + 1.7) * Math.cos(v * 17 + 0.3)
+                 + Math.sin(u * 31)       * Math.cos(v * 29);
+        mott = mott * 0.5 + 0.5; // 0..1
+        const mottAmp = 0.025;
+
+        // Crater highlights: Tycho (bottom) + rays, Copernicus (mid).
+        const tdx = u - (-0.05), tdy = v - (-0.55);
+        const tychoR = Math.sqrt(tdx * tdx + tdy * tdy);
+        const tychoSpot = Math.max(0, 1 - tychoR / 0.10) * 0.18;
+        const tychoRays = Math.max(0, 1 - tychoR / 0.45) * 0.04;
+        const cdx = u - (-0.10), cdy = v - 0.05;
+        const coperR = Math.sqrt(cdx * cdx + cdy * cdy);
+        const coperSpot = Math.max(0, 1 - coperR / 0.06) * 0.15;
+        const bright = tychoSpot + tychoRays + coperSpot;
+
+        // Compose moon color, then cool limb darkening over the outer 22%.
+        let mr = (moonCoreR / 255) - maria - mottAmp * (mott - 0.5) + bright;
+        let mg = (moonCoreG / 255) - maria - mottAmp * (mott - 0.5) + bright;
+        let mb = (moonCoreB / 255) - maria - mottAmp * (mott - 0.5) + bright;
+        const rUV = Math.sqrt(u * u + v * v);
+        const limb = Math.max(0, Math.min(1, (rUV - 0.78) / 0.22));
+        mr = mr * (1 - limb) + mr * 0.84 * limb;
+        mg = mg * (1 - limb) + mg * 0.86 * limb;
+        mb = mb * (1 - limb) + mb * 0.96 * limb;
+        mr = Math.max(0, Math.min(1, mr));
+        mg = Math.max(0, Math.min(1, mg));
+        mb = Math.max(0, Math.min(1, mb));
+
+        // Blend disc over (halo-augmented) sky using the AA edge.
+        const sR = scene[j]   / 255;
+        const sG = scene[j+1] / 255;
+        const sB = scene[j+2] / 255;
+        scene[j]   = ((mr * disc + sR * (1 - disc)) * 255) | 0;
+        scene[j+1] = ((mg * disc + sG * (1 - disc)) * 255) | 0;
+        scene[j+2] = ((mb * disc + sB * (1 - disc)) * 255) | 0;
       }
     }
     // Skyline silhouette along the bottom: jagged triangle peaks.
