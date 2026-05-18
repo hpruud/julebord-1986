@@ -131,6 +131,39 @@ vec3 terrainColor(vec3 p) {
   return lit;
 }
 
+// Tiny Santa+sleigh silhouette in screen space, drawn as the union of a
+// few analytic shapes. The whole sprite spans ~0.25 in NDC width.
+// Reindeer lead on +x (sleigh flies left-to-right toward the moon).
+float santaShape(vec2 q) {
+  float a = 0.0;
+  // Three reindeer in front, each with a tiny gallop bob and short antlers.
+  for (int i = 0; i < 3; i++) {
+    float fi = float(i);
+    float bob = sin(u_time * 9.0 + fi * 1.7) * 0.007;
+    vec2 rp = q - vec2(0.040 + fi * 0.055, bob);
+    a = max(a, smoothstep(0.026, 0.020, length(rp * vec2(0.55, 1.5))));
+    vec2 hp = rp - vec2(0.022, -0.008);
+    a = max(a, smoothstep(0.013, 0.009, length(hp * vec2(0.9, 1.2))));
+    float ant = step(-0.034, hp.y) * step(hp.y, -0.014) * step(abs(hp.x - 0.003), 0.014);
+    a = max(a, ant * 0.75);
+  }
+  // Sleigh body and upturned rear runner.
+  vec2 sp = q - vec2(-0.070, 0.006);
+  a = max(a, smoothstep(0.038, 0.030, length(sp * vec2(0.5, 1.5))));
+  vec2 rp2 = q - vec2(-0.108, -0.010);
+  a = max(a, smoothstep(0.012, 0.009, length(rp2 * vec2(0.9, 1.1))));
+  // Santa dome + hat tip.
+  vec2 stp = q - vec2(-0.058, -0.030);
+  a = max(a, smoothstep(0.020, 0.015, length(stp * vec2(0.7, 1.0))));
+  vec2 htp = q - vec2(-0.074, -0.052);
+  a = max(a, smoothstep(0.010, 0.007, length(htp * vec2(1.5, 1.0))));
+  // Reins.
+  float lineDist = abs(q.y + 0.002 - q.x * 0.05);
+  float rein = smoothstep(0.0025, 0.0012, lineDist) * step(-0.060, q.x) * step(q.x, 0.135);
+  a = max(a, rein * 0.45);
+  return clamp(a, 0.0, 1.0);
+}
+
 void main() {
   // Blit flips Y (v_uv.y=0 ends up at the top of the displayed image);
   // mirror that here so "up" in my ray math matches what the user sees.
@@ -180,6 +213,18 @@ void main() {
   } else {
     col = skyColor(rd, moonNDC);
   }
+
+  // Flying Santa+sleigh silhouetted against the night sky and moon.
+  // Path runs lower-left -> upper-right, passing through the moon at
+  // about t=0.6 of the cycle. Camera advances +Z, so the diagonal motion
+  // visually tracks "with" the ground sliding past while heading toward
+  // the moon in the upper right.
+  float sCycle = mod(u_time + 2.0, 16.0) / 16.0;
+  vec2 sPos = mix(vec2(-0.30, 0.85), vec2(1.30, -0.30), sCycle);
+  sPos.y += sin(u_time * 1.6) * 0.008;
+  vec2 sq = (v_uv - sPos) * vec2(u_res.x / u_res.y, 1.0);
+  float sA = santaShape(sq);
+  col = mix(col, vec3(0.02, 0.02, 0.04), sA);
 
   // Vignette + subtle scanlines.
   vec2 c = v_uv - 0.5;
