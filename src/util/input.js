@@ -53,6 +53,17 @@ export function initInput() {
       boot.style.display = 'none';
       fire('start');
     }, { once: true });
+    // When the page is reloaded between demo runs we re-add the
+    // `?autostart=1` query param. Auto-click the boot overlay so the demo
+    // resumes without requiring another user gesture. Audio may stay muted
+    // until the user interacts (browser autoplay policy), but visuals run.
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('autostart') === '1') {
+        // Defer to next tick so the rest of boot() can finish wiring up.
+        setTimeout(() => boot.click(), 0);
+      }
+    } catch {}
   }
 }
 

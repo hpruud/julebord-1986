@@ -122,7 +122,25 @@ export class Director {
           // Out transition done. Wrap from the last part back to the first
           // so the demo loops indefinitely (last part runs forever until
           // SPACE, then we restart from part 0).
+          //
+          // When we wrap (nextIdx === 0), reload the page instead of
+          // continuing in-process. This gives every "run" of the demo a
+          // truly fresh state -- no risk of effect-internal closure state,
+          // accumulated RAF drift, GL/audio context warts, or any of the
+          // other subtle "second run" issues users have reported.
           const nextIdx = (this.idx + 1) % this.timeline.parts.length;
+          if (nextIdx === 0) {
+            // Hard reload with an auto-start flag so the next run begins
+            // without requiring a user click on the boot overlay.
+            try {
+              const url = new URL(window.location.href);
+              url.searchParams.set('autostart', '1');
+              window.location.replace(url.toString());
+            } catch {
+              window.location.reload();
+            }
+            return;
+          }
           this._enterPart(nextIdx);
         }
       }
