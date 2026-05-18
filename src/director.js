@@ -130,15 +130,9 @@ export class Director {
           // other subtle "second run" issues users have reported.
           const nextIdx = (this.idx + 1) % this.timeline.parts.length;
           if (nextIdx === 0) {
-            // Hard reload with an auto-start flag so the next run begins
-            // without requiring a user click on the boot overlay.
-            try {
-              const url = new URL(window.location.href);
-              url.searchParams.set('autostart', '1');
-              window.location.replace(url.toString());
-            } catch {
-              window.location.reload();
-            }
+            // Hard reload between full demo runs so every run starts with
+            // a completely fresh state.
+            window.location.reload();
             return;
           }
           this._enterPart(nextIdx);
