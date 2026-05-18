@@ -475,18 +475,19 @@ export function starfield(gl) {
 
       // ---- Pass 2: vector sleigh team ----
       const tt = t / 1000;
-      // Sleigh path: linear sweep, right -> left, taking the WHOLE part
-      // duration so the loop never wraps mid-view. The starfield part is
-      // 14s long (see src/timeline.js); we move from just off-screen right
-      // to just off-screen left over ~14s. Because the part transitions
-      // out before we wrap, there's no off-screen "gap" window for users
-      // to land on -- which was the bug where Santa appeared missing on
-      // the second playthrough.
-      const SWEEP_DURATION = 14.0;
-      const u = Math.min(1, tt / SWEEP_DURATION);
-      // Start at pathX = VW + 30 (just off-screen right), end at -30
-      // (just off-screen left). Reindeer extend ~108px to the left of
-      // pathX (with the mirror), so they enter screen first.
+      // Sleigh path: linear right -> left sweep, repeated. Each pass takes
+      // SWEEP_DUR seconds, then Santa wraps off-screen-left back to
+      // off-screen-right. We start each pass with Santa already visible
+      // (PRELOAD seconds into the pass), so on every entry to this part
+      // -- including loop-back runs and SPACE-restarts -- Santa is on-
+      // screen within a frame or two. This fixes the "Santa missing on
+      // the second playthrough" bug, which was caused by an off-screen
+      // start window plus loop-wrap timing.
+      const SWEEP_DUR = 7.0;        // seconds per right->left pass (was 9.0)
+      const PRELOAD   = 1.4;        // shift cycle so Santa is on-screen at tt=0
+      const cycT = ((tt + PRELOAD) % SWEEP_DUR + SWEEP_DUR) % SWEEP_DUR;
+      const u = cycT / SWEEP_DUR;
+      // pathX goes from VW+30 (just off right) to -30 (just off left).
       const pathX = (VW + 30) - (VW + 60) * u;
       // Reindeer face -X (leftward) the entire sweep.
       const xSign = -1;
