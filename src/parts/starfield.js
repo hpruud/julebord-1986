@@ -479,8 +479,16 @@ export function starfield(gl) {
       // the left, then loops every PERIOD seconds. (Reindeer face +X, but
       // visually it's nicer to fly leftward across the screen, so we mirror
       // by flipping the X scale below.)
+      //
+      // PHASE_OFFSET shifts the cycle so the sleigh is already on-screen at
+      // t=0 (instead of sitting off-screen right for the first ~1.1s). This
+      // matters because every time the demo re-enters the starfield part
+      // (initial run, demo loop-back, or SPACE-restart), `t` resets to 0 --
+      // without the offset Santa would be invisible for the first second of
+      // every visit, which read as "Santa is missing on the second run".
       const PERIOD = 9.0;
-      const phase01 = ((tt % PERIOD) + PERIOD) % PERIOD / PERIOD; // 0..1
+      const PHASE_OFFSET = 0.25;
+      const phase01 = (((tt / PERIOD) + PHASE_OFFSET) % 1 + 1) % 1;
       // Path goes from x = VW + 80 (off right) to x = -100 (off left).
       const pathX = (VW + 80) + (-(VW + 180)) * phase01;
       // Vertical sine swoop, plus a slow drift.
