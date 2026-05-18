@@ -303,13 +303,21 @@ export function wire_tree(gl) {
       // each box also spins on its own Y axis with a little vertical bob.
       const dynamic = [];
       for (let i = 0; i < 8; i++) {
-        const phase = (i / 8) * Math.PI * 2 + tt * 0.35;
-        const orbitR = 64;
+        // Each gift has its own orbital speed/direction, breathing radius,
+        // and vertical hop so they all swirl around the tree at different
+        // tempos instead of orbiting in lockstep.
+        const dir       = (i % 2 === 0) ? 1 : -1;
+        const speed     = 0.55 + (i % 4) * 0.18;
+        const phase     = (i / 8) * Math.PI * 2 + tt * speed * dir;
+        const orbitR    = 60 + Math.sin(tt * 0.9 + i * 1.3) * 10;
         const cx = Math.cos(phase) * orbitR;
         const cz = Math.sin(phase) * orbitR;
-        const cy = -8 + Math.sin(tt * 1.6 + i * 0.7) * 2.5;
+        // Vertical hop: each gift bounces between -12 and a few units above
+        // the tree base. abs(sin) gives a nice springy bounce profile.
+        const hop = Math.abs(Math.sin(tt * 1.4 + i * 0.9));
+        const cy = -12 + hop * 14;
         const size = 8 + (i % 3);
-        const spin = tt * (0.9 + (i % 3) * 0.3) + i;
+        const spin = tt * (1.4 + (i % 3) * 0.4) * dir + i;
         const cs = Math.cos(spin), sn = Math.sin(spin);
         const h = size / 2;
         const v = [
