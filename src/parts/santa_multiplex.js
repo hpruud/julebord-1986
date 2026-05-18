@@ -38,39 +38,72 @@ const SPRITE_RECIPES = [
 ];
 
 function buildSprite(recipe) {
-  // 16x16 5-point star. Hand-tuned bitmap (O outline, F fill, G glow, C center).
-  const art = [
-    "........FF......",
-    ".......FFFF.....",
-    ".......FGGF.....",
-    "FFFFFFFGGGFFFFFF",
-    "FFGGGGGGCGGGGGFF",
-    "FOGGGGGCCCGGGGOF",
-    ".OOGGGGCCCGGGOO.",
-    "...OOGGGGGGGOO..",
-    "....OGGGGGGGO...",
-    "...OOGFFGGFFGO..",
-    "..OOGFF.OO.FFGOO",
-    ".OOGFF..OO..FFGO",
-    "OOGF....OO....FG",
-    "OF......OO......",
-    "F.......O.......",
-    "........O.......",
-  ];
-  const map = {
-    '.': [0, 0, 0, 0],
-    'O': [...recipe.outline, 255],
-    'F': [...recipe.fill,    255],
-    'G': [...recipe.glow,    255],
-    'C': [...recipe.center,  255],
-  };
+  // Geometrically correct regular 5-point star, rasterized at runtime.
+  // Outer points sit on a circle of radius Router; inner vertices sit on
+  // a circle of radius Router / phi^2 (the golden-ratio star), which is
+  // the only inner radius that produces a star with straight, equal arms.
+  const cx = SW / 2, cy = SH / 2;
+  const Router = SW / 2 - 0.5;
+  const PHI = (1 + Math.sqrt(5)) / 2;
+  const Rinner = Router / (PHI * PHI);
+
+  // 10 vertices, alternating outer/inner, starting from the top point and
+  // going clockwise. -PI/2 puts vertex 0 straight up.
+  const verts = [];
+  for (let k = 0; k < 10; k++) {
+    const r = (k % 2 === 0) ? Router : Rinner;
+    const a = -Math.PI / 2 + k * Math.PI / 5;
+    verts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
+  }
+
+  function pointInPoly(px, py) {
+    let inside = false;
+    for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+      const [xi, yi] = verts[i], [xj, yj] = verts[j];
+      const intersect = ((yi > py) !== (yj > py)) &&
+        (px < (xj - xi) * (py - yi) / (yj - yi) + xi);
+      if (intersect) inside = !inside;
+    }
+    return inside;
+  }
+  function distToEdge(px, py) {
+    let min = Infinity;
+    for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+      const [xi, yi] = verts[i], [xj, yj] = verts[j];
+      const dx = xj - xi, dy = yj - yi;
+      const len2 = dx * dx + dy * dy || 1;
+      const t = Math.max(0, Math.min(1, ((px - xi) * dx + (py - yi) * dy) / len2));
+      const ex = xi + t * dx, ey = yi + t * dy;
+      const d = Math.hypot(px - ex, py - ey);
+      if (d < min) min = d;
+    }
+    return min;
+  }
+
   const buf = new Uint8Array(SW * SH * 4);
   for (let y = 0; y < SH; y++) {
-    const row = art[y];
     for (let x = 0; x < SW; x++) {
-      const c = map[row[x]] || map['.'];
+      const px = x + 0.5, py = y + 0.5;
+      const inside = pointInPoly(px, py);
+      const dEdge = distToEdge(px, py);
+      // Pull in pixels right at the silhouette so arm tips don't dropout.
+      if (!inside && dEdge > 0.45) {
+        const j = (y * SW + x) * 4;
+        buf[j + 3] = 0;
+        continue;
+      }
+      const dCenter = Math.hypot(px - cx, py - cy);
+      const onOutline = dEdge < 0.85;
+      // Upper-left glow lobe for a soft highlight.
+      const gx = (cx - 1.5) - px, gy = (cy - 1.5) - py;
+      const inGlow = !onOutline && dCenter < Rinner + 0.5 && (gx * gx + gy * gy) < 6.0;
+      let c;
+      if (dCenter < 1.4)       c = recipe.center;
+      else if (onOutline)      c = recipe.outline;
+      else if (inGlow)         c = recipe.glow;
+      else                     c = recipe.fill;
       const j = (y * SW + x) * 4;
-      buf[j] = c[0]; buf[j+1] = c[1]; buf[j+2] = c[2]; buf[j+3] = c[3];
+      buf[j] = c[0]; buf[j + 1] = c[1]; buf[j + 2] = c[2]; buf[j + 3] = 255;
     }
   }
   return buf;
