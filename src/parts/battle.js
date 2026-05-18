@@ -602,61 +602,57 @@ function buildSanta() {
   const WHITE       = [0.96, 0.96, 0.96];   // beard / hat trim
 
   // ----- Eight reindeer in a row, each occupying a 10-px-wide slot -----
-  // Reindeer silhouette (8x10 px):
-  //   Antlers at top, head, body, four legs.
-  // Stride: 10 px between reindeer fronts.
+  // Authored facing LEFT in source coords so that, after the horizontal
+  // mirror below, they end up facing RIGHT (the direction of travel).
+  // Each reindeer: head at slot's left, body to the right, tail at the rear.
   for (let i = 0; i < 8; i++) {
     const ox = i * 10;
-    // Antlers (two 1px stems with a 1px branch each, mostly decorative)
-    rect(ox + 1, 0, 1, 2, ...BROWN_DARK);
-    rect(ox + 0, 1, 1, 1, ...BROWN_DARK);   // left antler branch
-    rect(ox + 3, 0, 1, 2, ...BROWN_DARK);
-    rect(ox + 4, 1, 1, 1, ...BROWN_DARK);   // right antler branch
-
-    // Head (3x3)
-    rect(ox + 1, 2, 4, 3, ...BROWN_BODY);
-    // Snout extension (1px forward)
-    rect(ox + 5, 3, 1, 1, ...BROWN_BODY);
-    // Body (5x3) tucked behind the head
-    rect(ox + 0, 5, 7, 3, ...BROWN_BODY);
+    // Antlers above the head (head at ox+5..ox+8).
+    rect(ox + 8, 0, 1, 2, ...BROWN_DARK);
+    rect(ox + 9, 1, 1, 1, ...BROWN_DARK);   // outer branch
+    rect(ox + 6, 0, 1, 2, ...BROWN_DARK);
+    rect(ox + 5, 1, 1, 1, ...BROWN_DARK);   // inner branch
+    // Head (4x3)
+    rect(ox + 5, 2, 4, 3, ...BROWN_BODY);
+    // Snout extension (1 px forward = LEFT in source)
+    rect(ox + 4, 3, 1, 1, ...BROWN_BODY);
+    // Body (7x3) extends rightward (rearward) from the head
+    rect(ox + 3, 5, 7, 3, ...BROWN_BODY);
     // Legs - alternating gallop pose so the team looks animated.
     if (i % 2 === 0) {
-      rect(ox + 0, 8, 1, 3, ...BROWN_BODY);   // front leg back
-      rect(ox + 2, 8, 1, 2, ...BROWN_BODY);   // front leg short
-      rect(ox + 4, 8, 1, 3, ...BROWN_BODY);   // back  leg back
-      rect(ox + 6, 8, 1, 2, ...BROWN_BODY);   // back  leg short
+      rect(ox + 9, 8, 1, 3, ...BROWN_BODY);   // front leg back
+      rect(ox + 7, 8, 1, 2, ...BROWN_BODY);
+      rect(ox + 5, 8, 1, 3, ...BROWN_BODY);
+      rect(ox + 3, 8, 1, 2, ...BROWN_BODY);
     } else {
-      rect(ox + 0, 8, 1, 2, ...BROWN_BODY);
-      rect(ox + 2, 8, 1, 3, ...BROWN_BODY);
-      rect(ox + 4, 8, 1, 2, ...BROWN_BODY);
-      rect(ox + 6, 8, 1, 3, ...BROWN_BODY);
+      rect(ox + 9, 8, 1, 2, ...BROWN_BODY);
+      rect(ox + 7, 8, 1, 3, ...BROWN_BODY);
+      rect(ox + 5, 8, 1, 2, ...BROWN_BODY);
+      rect(ox + 3, 8, 1, 3, ...BROWN_BODY);
     }
-    // Tail
-    rect(ox - 1, 5, 1, 1, ...BROWN_BODY);
+    // Tail at the rear (right side in source)
+    rect(ox + 10, 5, 1, 1, ...BROWN_BODY);
   }
 
   // ----- Lead reindeer's red nose (Rudolph) -----
-  // The mesh is mirrored horizontally below so the sleigh ends up on the
-  // LEFT and the reindeer extend to the RIGHT; i=0 here becomes the
-  // rightmost (front-of-team) reindeer = Rudolph.
+  // The mesh is mirrored horizontally below so reindeer i=0 (leftmost in
+  // source) becomes the rightmost (= front of the team) on screen.
+  // Snout is at ox+4 (source), so the nose pokes out at ox+2..3.
   const leadX = 0;
-  // Big glowing nose: extend the snout one pixel further forward, paint a
-  // 2x2 red core at the tip, and add a 1-px red halo above/below so the
-  // nose visibly glows against the night sky.
   const NOSE_GLOW = [1.00, 0.45, 0.35];
-  rect(leadX + 6, 3, 1, 1, ...BROWN_BODY);    // extra snout pixel
-  rect(leadX + 5, 3, 2, 2, ...RED_NOSE);      // 2x2 bright red nose
-  rect(leadX + 5, 2, 2, 1, ...NOSE_GLOW);     // glow above
-  rect(leadX + 5, 5, 2, 1, ...NOSE_GLOW);     // glow below
-  rect(leadX + 7, 3, 1, 2, ...NOSE_GLOW);     // glow in front
+  rect(leadX + 3, 3, 1, 1, ...BROWN_BODY);    // extra snout pixel
+  rect(leadX + 2, 3, 2, 2, ...RED_NOSE);      // 2x2 bright red nose
+  rect(leadX + 2, 2, 2, 1, ...NOSE_GLOW);     // glow above
+  rect(leadX + 2, 5, 2, 1, ...NOSE_GLOW);     // glow below
+  rect(leadX + 1, 3, 1, 2, ...NOSE_GLOW);     // glow in front (LEFT in source)
 
-  // ----- Reins: thin gold lines from sleigh to each reindeer's head -----
-  // (Drawn as 1-px-tall horizontal strips between reindeer; cheap but reads.)
-  for (let i = 0; i < 8; i++) {
-    const x0 = i * 10 + 5;     // approx head of this reindeer
-    const x1 = (i + 1) * 10;   // approx tail of next (or sleigh start at 80)
-    if (x1 > x0) rect(x0, 4, x1 - x0, 1, ...GOLD);
+  // ----- Reins: short gold strips chaining harness->next reindeer->sleigh -
+  // 7 segments between adjacent reindeer (i's rear -> (i+1)'s snout area),
+  // plus one strip from the rightmost reindeer's rear to the sleigh.
+  for (let i = 0; i < 7; i++) {
+    rect(i * 10 + 10, 4, 4, 1, ...GOLD);
   }
+  rect(80, 4, 2, 1, ...GOLD);
 
   // ----- Sleigh at x=82..100 (18px wide, 8px tall body + runners) -----
   const sx = 82;
