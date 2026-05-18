@@ -108,8 +108,8 @@ function buildBaseImage() {
     '6': ['01110','10000','10000','11110','10001','10001','01110'],
     ' ': ['00000','00000','00000','00000','00000','00000','00000'],
   };
-  const drawLine = (text, scale, ty) => {
-    const lw = 6 * scale;
+  const drawLine = (text, scale, ty, lwOverride) => {
+    const lw = lwOverride != null ? lwOverride : 6 * scale;
     const totalW = text.length * lw;
     const startX = ((VW - totalW) / 2) | 0;
     for (let i = 0; i < text.length; i++) {
@@ -124,9 +124,11 @@ function buildBaseImage() {
       }
     }
   };
-  // Top subtitle above the snowflake, big title below it.
+  // Top subtitle above the snowflake, big title below it. The title is
+  // packed slightly tighter (lw=16 instead of the usual 18) so the full
+  // "JULEBORD 1986 DEMO" sits comfortably within the 320-wide frame.
   drawLine('ACADEMY', 3, 8);
-  drawLine('JULEBORD 1986 DEMO', 3, VH - 40);
+  drawLine('JULEBORD 1986 DEMO', 3, VH - 40, 16);
   return buf;
 }
 
