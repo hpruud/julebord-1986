@@ -23,6 +23,7 @@ import { metaballs } from './metaballs.js';
 import { checkerfloor } from './checkerfloor.js';
 import { waterripple } from './waterripple.js';
 import { snowglobe } from './snowglobe.js';
+import { kaleido } from './kaleido.js';
 
 export const parts = {
   plasma,
@@ -50,4 +51,5 @@ export const parts = {
   checkerfloor,
   waterripple,
   snowglobe,
+  kaleido,
 };
