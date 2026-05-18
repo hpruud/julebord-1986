@@ -25,7 +25,7 @@ void main() {
 
 // 5-point pixel-art Christmas star with a santa-red center dot. Reads
 // instantly at small size and tints well per copy.
-const SW = 16, SH = 16;
+const SW = 24, SH = 24;
 const SPRITE_RECIPES = [
   // Mostly-yellow festive star.
   { outline: [40, 30, 5], fill: [255, 215, 60], center: [240, 60, 60], glow: [255, 240, 160] },
@@ -93,12 +93,12 @@ function buildSprite(recipe) {
         continue;
       }
       const dCenter = Math.hypot(px - cx, py - cy);
-      const onOutline = dEdge < 0.85;
+      const onOutline = dEdge < 1.1;
       // Upper-left glow lobe for a soft highlight.
-      const gx = (cx - 1.5) - px, gy = (cy - 1.5) - py;
-      const inGlow = !onOutline && dCenter < Rinner + 0.5 && (gx * gx + gy * gy) < 6.0;
+      const gx = (cx - 2.2) - px, gy = (cy - 2.2) - py;
+      const inGlow = !onOutline && dCenter < Rinner + 0.5 && (gx * gx + gy * gy) < 12.0;
       let c;
-      if (dCenter < 1.4)       c = recipe.center;
+      if (dCenter < 2.1)       c = recipe.center;
       else if (onOutline)      c = recipe.outline;
       else if (inGlow)         c = recipe.glow;
       else                     c = recipe.fill;
