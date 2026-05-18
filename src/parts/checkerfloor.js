@@ -105,16 +105,17 @@ void main() {
     float jumpH   = 0.8 + hash(vec2(jumpIdx, 11.7)) * 0.4;
     float by      = R + bounceN * jumpH;
 
-    // Project ball center to screen-space (in the floor's (uv.x, sy) frame).
+    // Project ball center to screen-space. Center placement still uses the
+    // floor's perspective so the ball sits believably in the scene, but the
+    // SHAPE is measured in pixels so it stays perfectly round regardless of
+    // the viewport aspect ratio.
     float ball_uvx = 0.5 + bx / (BZ * 2.2);
     float ball_sy  = horizon + (by - 1.0) / BZ;
-    float r_uvx    = R / (BZ * 2.2);
-    float r_sy     = R / BZ;
-
-    // Normalized offset within ball ellipse.
-    float px = (v_uv.x - ball_uvx) / r_uvx;
-    float py = (sy       - ball_sy ) / r_sy;
-    float rho2 = px * px + py * py;
+    float R_px     = (R / BZ) * u_res.y;
+    vec2  d_px     = (vec2(v_uv.x, sy) - vec2(ball_uvx, ball_sy)) * u_res;
+    float px       = d_px.x / R_px;
+    float py       = d_px.y / R_px;
+    float rho2     = px * px + py * py;
     if (rho2 < 1.0) {
       // Sphere normal (right-handed, +Y up, +Z toward viewer).
       float nz = sqrt(1.0 - rho2);
