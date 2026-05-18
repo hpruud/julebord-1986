@@ -14,6 +14,7 @@ export const TIMELINE = {
     { id: 'metaballs',      dur: 14000, transitionIn: 'fade',  transitionOut: 'wipe'  },
     { id: 'rotozoom',       dur: 16000, transitionIn: 'wipe',  transitionOut: 'flash' },
     { id: 'checkerfloor',   dur: 14000, transitionIn: 'wipe',  transitionOut: 'flash' },
+    { id: 'voxel_landscape',dur: 18000, transitionIn: 'fade',  transitionOut: 'fade'  },
     { id: 'mandel',         dur: 22000, transitionIn: 'fade',  transitionOut: 'fade'  },
     { id: 'kaleido',        dur: 14000, transitionIn: 'fade',  transitionOut: 'vhs'   },
     { id: 'glenz',          dur: 16000, transitionIn: 'vhs',   transitionOut: 'flash' },
