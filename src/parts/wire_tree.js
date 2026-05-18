@@ -131,7 +131,7 @@ export function wire_tree(gl) {
   edges.push(...coneEdges(44, 28, 22, 10));
   edges.push(...coneEdges(66, 18, 22, 8));
   // Star at top (above last tier apex).
-  edges.push(...star3D(0, 92, 0, 12, [255, 230, 110]));
+  edges.push(...star3D(0, 92, 0, 16, [255, 240, 140]));
 
   // Per-frame: gifts orbit. Each gift gets its own animated edge set.
   const giftColors = [
@@ -147,21 +147,25 @@ export function wire_tree(gl) {
     buf[j] = r; buf[j+1] = g; buf[j+2] = b; buf[j+3] = 255;
   }
 
-  function line(x0, y0, x1, y1, r, g, b) {
-    // Bresenham, clipped at the plot level.
+  function thickLine(x0, y0, x1, y1, r, g, b) {
+    // Bresenham, but plot a 2px-thick line by doubling on the minor axis.
     let dx =  Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
     let dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
     let err = dx + dy;
     let x = x0 | 0, y = y0 | 0;
     const xe = x1 | 0, ye = y1 | 0;
+    const xMajor = dx > -dy;
     for (let i = 0; i < 1000; i++) {
       plot(x, y, r, g, b);
+      if (xMajor) plot(x, y + 1, r, g, b);
+      else        plot(x + 1, y, r, g, b);
       if (x === xe && y === ye) break;
       const e2 = err * 2;
       if (e2 >= dy) { err += dy; x += sx; }
       if (e2 <= dx) { err += dx; y += sy; }
     }
   }
+  const line = thickLine;
 
   return {
     render(gl, t, fbo) {

@@ -137,7 +137,7 @@ export function fireworks(gl) {
       hue[i] = h;
       spawned++;
     }
-    flashAmt = 0.55;
+    flashAmt = 0.35;
   }
 
   function additivePixel(x, y, r, g, b) {
@@ -154,14 +154,14 @@ export function fireworks(gl) {
       lastT = t;
       tt += dt;
 
-      // Decay trail buffer ~7% per frame.
+      // Decay trail buffer ~15% per frame for snappier sparkle tails.
       for (let i = 0; i < trail.length; i += 4) {
-        trail[i]   = (trail[i]   * 232) >> 8;
-        trail[i+1] = (trail[i+1] * 232) >> 8;
-        trail[i+2] = (trail[i+2] * 232) >> 8;
+        trail[i]   = (trail[i]   * 218) >> 8;
+        trail[i+1] = (trail[i+1] * 218) >> 8;
+        trail[i+2] = (trail[i+2] * 218) >> 8;
       }
       // Flash decays exponentially.
-      flashAmt *= Math.pow(0.05, dt);
+      flashAmt *= Math.pow(0.02, dt);
 
       // Spawn bursts on schedule.
       if (tt >= nextBurstAt) {
@@ -181,16 +181,19 @@ export function fireworks(gl) {
         life[i] -= dt;
         const k = Math.max(0, life[i] / maxLife[i]); // 1..0
         const h = hue[i];
-        const r = (palRGB[h*3]   * k) | 0;
-        const g = (palRGB[h*3+1] * k) | 0;
-        const b = (palRGB[h*3+2] * k) | 0;
-        // Bright core + soft cross.
+        // Brighter cores: pump up RGB so additive blend reads punchy even
+        // after the trail decay.
+        const boost = 1.4;
+        const r = Math.min(255, palRGB[h*3]   * boost * k) | 0;
+        const g = Math.min(255, palRGB[h*3+1] * boost * k) | 0;
+        const b = Math.min(255, palRGB[h*3+2] * boost * k) | 0;
         additivePixel(px[i],     py[i],     r, g, b);
-        const half = (k * 90) | 0;
-        additivePixel(px[i] + 1, py[i],     half, half, half);
-        additivePixel(px[i] - 1, py[i],     half, half, half);
-        additivePixel(px[i],     py[i] + 1, half, half, half);
-        additivePixel(px[i],     py[i] - 1, half, half, half);
+        // Bright cross "spark" arms.
+        const arm = (k * 140) | 0;
+        additivePixel(px[i] + 1, py[i],     arm, arm, arm);
+        additivePixel(px[i] - 1, py[i],     arm, arm, arm);
+        additivePixel(px[i],     py[i] + 1, arm, arm, arm);
+        additivePixel(px[i],     py[i] - 1, arm, arm, arm);
       }
 
       // Compose: scene + trail (additive saturated).
@@ -209,7 +212,7 @@ export function fireworks(gl) {
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.uniform1i(uTex, 0);
       gl.uniform1f(uTime, tt);
-      gl.uniform1f(uFlash, Math.min(0.55, flashAmt));
+      gl.uniform1f(uFlash, Math.min(0.35, flashAmt));
       drawQuad(gl);
     },
     dispose(gl) {
