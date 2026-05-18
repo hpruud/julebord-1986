@@ -1,5 +1,7 @@
-// Voxel landscape: Comanche-style columnar voxel raycaster over an infinite
-// snowy fBm heightmap. The camera glides forward with a slight S-curve.
+// Voxel landscape: fragment-shader terrain raymarcher. Pure-shader render
+// of an infinite snowy fBm heightfield under a moonlit night sky. Uses the
+// classic Comanche-style approach but evaluated per-pixel on the GPU so we
+// get proper detail at 320x256.
 import { createProgram, VS_FULLSCREEN, VW, VH } from '../gl/context.js';
 import { drawQuad } from '../gl/quad.js';
 import { bindFBO } from '../gl/framebuffer.js';
@@ -8,208 +10,175 @@ const FS = `#version 300 es
 precision highp float;
 in vec2 v_uv;
 out vec4 outColor;
-uniform sampler2D u_tex;
+uniform float u_time;
+uniform vec2 u_res;
+
+// --- noise --------------------------------------------------------------
+
+float hash(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float vnoise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 f = fract(p);
+  vec2 u = f * f * (3.0 - 2.0 * f);
+  float a = hash(i);
+  float b = hash(i + vec2(1.0, 0.0));
+  float c = hash(i + vec2(0.0, 1.0));
+  float d = hash(i + vec2(1.0, 1.0));
+  return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+}
+
+float fbm(vec2 p) {
+  float v = 0.0;
+  float amp = 0.5;
+  for (int i = 0; i < 5; i++) {
+    v += amp * vnoise(p);
+    p *= 2.03;
+    amp *= 0.5;
+  }
+  return v;
+}
+
+// Terrain height in world units.
+float terrain(vec2 p) {
+  float h = fbm(p * 0.04);
+  // Ridge-style sharpening for mountain spines.
+  float ridge = 1.0 - abs(fbm(p * 0.10 + 13.0) - 0.5) * 2.0;
+  h = h * 0.75 + ridge * 0.25;
+  // Map to world height range with a slight gamma to push valleys down.
+  return pow(clamp(h, 0.0, 1.0), 1.4) * 110.0;
+}
+
+vec3 skyColor(vec3 rd, vec2 moonNDC) {
+  // Vertical night-sky gradient.
+  float t = clamp(rd.y * 0.5 + 0.5, 0.0, 1.0);
+  vec3 col = mix(vec3(0.03, 0.04, 0.10), vec3(0.10, 0.12, 0.28), t);
+  // Stars (only above the horizon).
+  if (rd.y > 0.0) {
+    vec2 sp = rd.xz / max(0.05, rd.y) * 4.0;
+    float s = step(0.992, hash(floor(sp * 40.0)));
+    col += vec3(s) * (0.8 + 0.2 * sin(u_time * 3.0 + hash(floor(sp * 40.0)) * 30.0));
+  }
+  // Moon disc.
+  float moon = smoothstep(0.06, 0.05, length(v_uv - moonNDC));
+  float halo = smoothstep(0.18, 0.06, length(v_uv - moonNDC));
+  col += vec3(1.0, 0.97, 0.85) * moon;
+  col += vec3(0.4, 0.45, 0.55) * halo * 0.35;
+  return col;
+}
+
+// Terrain shading at hit point.
+vec3 terrainColor(vec3 p) {
+  float h = p.y;
+  // Stratified Christmas-night palette.
+  vec3 valley  = vec3(0.08, 0.12, 0.25);
+  vec3 pine    = vec3(0.12, 0.32, 0.18);
+  vec3 grass   = vec3(0.30, 0.45, 0.22);
+  vec3 rock    = vec3(0.55, 0.55, 0.50);
+  vec3 snow    = vec3(0.95, 0.97, 1.00);
+  vec3 col = valley;
+  col = mix(col, pine,  smoothstep(15.0, 35.0, h));
+  col = mix(col, grass, smoothstep(35.0, 55.0, h));
+  col = mix(col, rock,  smoothstep(55.0, 75.0, h));
+  col = mix(col, snow,  smoothstep(75.0, 95.0, h));
+  // Normal estimate via finite differences for shading.
+  vec2 e = vec2(1.0, 0.0);
+  float hL = terrain(p.xz - e.xy);
+  float hR = terrain(p.xz + e.xy);
+  float hD = terrain(p.xz - e.yx);
+  float hU = terrain(p.xz + e.yx);
+  vec3 n = normalize(vec3(hL - hR, 2.0, hD - hU));
+  // Moonlight comes from upper-right.
+  vec3 lightDir = normalize(vec3(0.55, 0.75, -0.35));
+  float diff = clamp(dot(n, lightDir), 0.0, 1.0);
+  vec3 lit = col * (0.35 + 0.85 * diff);
+  // Cool ambient bounce from snow.
+  lit += col * vec3(0.05, 0.07, 0.10);
+  return lit;
+}
+
 void main() {
-  vec3 col = texture(u_tex, v_uv).rgb;
-  // Gentle vignette + scanlines.
+  // Blit flips Y (v_uv.y=0 ends up at the top of the displayed image);
+  // mirror that here so "up" in my ray math matches what the user sees.
+  vec2 uv = v_uv * 2.0 - 1.0;
+  uv.y = -uv.y;
+  uv.x *= u_res.x / u_res.y;
+
+  // Camera flies low over the landscape with a gentle S-curve.
+  float t = u_time;
+  vec3 ro = vec3(sin(t * 0.18) * 30.0, 130.0 + sin(t * 0.25) * 6.0, t * 22.0);
+  float yaw = sin(t * 0.12) * 0.15;
+  // Look slightly down toward the horizon.
+  vec3 fwd  = normalize(vec3(sin(yaw), -0.18, cos(yaw)));
+  vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), fwd));
+  vec3 up    = cross(fwd, right);
+  vec3 rd    = normalize(fwd + right * uv.x * 0.9 + up * uv.y * 0.7);
+
+  // Raymarch the heightfield. Step sizes grow with distance for cheap-but
+  // -correct coverage; refine at the crossing.
+  float tHit = -1.0;
+  float dt = 0.6;
+  float dist = 1.0;
+  float prev = ro.y - terrain(ro.xz);
+  for (int i = 0; i < 220; i++) {
+    vec3 p = ro + rd * dist;
+    float diff = p.y - terrain(p.xz);
+    if (diff < 0.0) {
+      // Linear refine between prev and this step.
+      tHit = dist - dt * diff / (diff - prev);
+      break;
+    }
+    prev = diff;
+    dist += dt;
+    dt *= 1.012;
+    if (dist > 1200.0) break;
+  }
+
+  vec2 moonNDC = vec2(0.78, 0.14);
+  vec3 col;
+  if (tHit > 0.0) {
+    vec3 hit = ro + rd * tHit;
+    col = terrainColor(hit);
+    // Distance fog blends to sky.
+    float fog = 1.0 - exp(-tHit * 0.0035);
+    vec3 sky = skyColor(rd, moonNDC);
+    col = mix(col, sky, fog);
+  } else {
+    col = skyColor(rd, moonNDC);
+  }
+
+  // Vignette + subtle scanlines.
   vec2 c = v_uv - 0.5;
-  col *= mix(0.6, 1.0, 1.0 - smoothstep(0.55, 0.95, length(c)));
-  float scan = 0.92 + 0.08 * sin(v_uv.y * float(${VH}) * 3.14159);
+  col *= mix(0.55, 1.0, 1.0 - smoothstep(0.55, 0.95, length(c)));
+  float scan = 0.92 + 0.08 * sin(v_uv.y * u_res.y * 3.14159);
   col *= scan;
+
   outColor = vec4(col, 1.0);
 }
 `;
 
-const MAP = 256;
-const MAP_MASK = MAP - 1;
-
-function buildHeightmap() {
-  // Value-noise fBm into a Uint8Array.
-  const h = new Uint8Array(MAP * MAP);
-  // Permutation seeded.
-  const rand = new Uint8Array(MAP * MAP);
-  let seed = 1337;
-  function rng() { seed = (seed * 1664525 + 1013904223) | 0; return ((seed >>> 0) & 0xff); }
-  for (let i = 0; i < rand.length; i++) rand[i] = rng();
-  function sample(x, y) { return rand[((y & MAP_MASK) * MAP) + (x & MAP_MASK)] / 255; }
-  function smooth(x, y) {
-    const xi = Math.floor(x), yi = Math.floor(y);
-    const fx = x - xi, fy = y - yi;
-    const a = sample(xi,   yi  );
-    const b = sample(xi+1, yi  );
-    const c = sample(xi,   yi+1);
-    const d = sample(xi+1, yi+1);
-    const u = fx * fx * (3 - 2 * fx);
-    const v = fy * fy * (3 - 2 * fy);
-    return a * (1-u) * (1-v) + b * u * (1-v) + c * (1-u) * v + d * u * v;
-  }
-  for (let y = 0; y < MAP; y++) {
-    for (let x = 0; x < MAP; x++) {
-      let amp = 1, freq = 1 / 64, sum = 0, norm = 0;
-      for (let o = 0; o < 5; o++) {
-        sum += smooth(x * freq, y * freq) * amp;
-        norm += amp;
-        amp *= 0.5;
-        freq *= 2;
-      }
-      const v = sum / norm;
-      // Contrast-stretch around 0.5 and compress the top so peaks stay
-      // below the camera height (avoids the "wall of terrain right in
-      // front of the camera" bug).
-      let s = (v - 0.5) * 1.6 + 0.45;
-      s = Math.max(0, Math.min(0.6, s));
-      h[y * MAP + x] = (s * 255) | 0;
-    }
-  }
-  return h;
-}
-
-function colorFor(h) {
-  // Returns [r,g,b]. h in 0..153 after clamping. Christmas-night palette.
-  if (h < 35)  return [20, 40, 90];                // deep valley shadow
-  if (h < 65)  return [40, 110, 60];               // saturated pine
-  if (h < 95)  return [150, 150, 130];             // rocky slope
-  if (h < 120) return [220, 230, 240];             // snow line
-  return [255, 255, 255];                          // peak
-}
-
 export function voxel_landscape(gl) {
   const prog = createProgram(gl, VS_FULLSCREEN, FS);
-  const uTex = gl.getUniformLocation(prog, 'u_tex');
-
-  const buf = new Uint8Array(VW * VH * 4);
-  const heightmap = buildHeightmap();
-  const colormap = new Uint8Array(MAP * MAP * 3);
-  for (let i = 0; i < MAP * MAP; i++) {
-    const c = colorFor(heightmap[i]);
-    colormap[i*3] = c[0]; colormap[i*3+1] = c[1]; colormap[i*3+2] = c[2];
-  }
-
-  const tex = gl.createTexture();
-  gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, VW, VH, 0, gl.RGBA, gl.UNSIGNED_BYTE, buf);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-
-  // Per-column y-buffer (lowest screen y already drawn, top-down origin).
-  const yBuf = new Int32Array(VW);
-  // Sky gradient lookup.
-  const sky = new Uint8Array(VH * 3);
-  for (let y = 0; y < VH; y++) {
-    const t = y / VH;
-    sky[y*3]   = (10 + t * 20) | 0;
-    sky[y*3+1] = (16 + t * 14) | 0;
-    sky[y*3+2] = (40 + t * 60) | 0;
-  }
-  // Moon.
-  const moonX = VW - 50, moonY = 36, moonR = 14;
-
-  let tt = 0, lastT = 0;
+  const uTime = gl.getUniformLocation(prog, 'u_time');
+  const uRes  = gl.getUniformLocation(prog, 'u_res');
+  let startMs = -1;
 
   return {
     render(gl, t, fbo) {
-      const dt = lastT === 0 ? 0.016 : Math.min(0.05, (t - lastT) / 1000);
-      lastT = t;
-      tt += dt;
-
-      // Fill sky.
-      for (let y = 0; y < VH; y++) {
-        const r = sky[y*3], g = sky[y*3+1], b = sky[y*3+2];
-        for (let x = 0; x < VW; x++) {
-          const j = (y * VW + x) * 4;
-          buf[j] = r; buf[j+1] = g; buf[j+2] = b; buf[j+3] = 255;
-        }
-      }
-      // Moon as a circle in the sky band.
-      for (let dy = -moonR - 5; dy <= moonR + 5; dy++) {
-        for (let dx = -moonR - 5; dx <= moonR + 5; dx++) {
-          const xx = moonX + dx, yy = moonY + dy;
-          if (xx < 0 || xx >= VW || yy < 0 || yy >= VH) continue;
-          const d = Math.sqrt(dx*dx + dy*dy);
-          const j = (yy * VW + xx) * 4;
-          if (d <= moonR) {
-            buf[j] = 245; buf[j+1] = 240; buf[j+2] = 210;
-          } else if (d <= moonR + 5) {
-            const k = 1 - (d - moonR) / 5;
-            buf[j]   = Math.min(255, buf[j]   + (40 * k) | 0);
-            buf[j+1] = Math.min(255, buf[j+1] + (35 * k) | 0);
-            buf[j+2] = Math.min(255, buf[j+2] + (25 * k) | 0);
-          }
-        }
-      }
-
-      // Camera. Moves forward in z with a slight S-curve in x.
-      const camZ = tt * 22.0;
-      const camX = Math.sin(tt * 0.25) * 18.0;
-      const camAng = Math.sin(tt * 0.18) * 0.20;
-      const cosA = Math.cos(camAng), sinA = Math.sin(camAng);
-      const camH = 160;
-      const horizon = VH * 0.52;
-      const scaleHeight = 200;
-
-      for (let x = 0; x < VW; x++) yBuf[x] = VH;
-
-      // March from near to far.
-      const zNear = 1.0, zFar = 200.0;
-      let z = zNear, dz = 0.5;
-      const halfW = VW * 0.5;
-      while (z < zFar) {
-        // Frustum edges at distance z (FOV ~60deg).
-        const half = z * 0.9;
-        const leftX  = -half, leftZ = z;
-        const rightX =  half, rightZ = z;
-        // Rotate by cam angle and add cam pos.
-        const lx = camX + leftX  * cosA - leftZ  * sinA;
-        const lz = camZ + leftX  * sinA + leftZ  * cosA;
-        const rx = camX + rightX * cosA - rightZ * sinA;
-        const rz = camZ + rightX * sinA + rightZ * cosA;
-        const stepX = (rx - lx) / VW;
-        const stepZ = (rz - lz) / VW;
-        let sx = lx, sz = lz;
-        const invZ = scaleHeight / z;
-        const fog = Math.min(1, Math.max(0, (z - 50) / 150));
-        for (let x = 0; x < VW; x++) {
-          const mx = sx | 0, my = sz | 0;
-          const hi = heightmap[((my & MAP_MASK) * MAP) + (mx & MAP_MASK)];
-          const screenY = ((camH - hi) * invZ + horizon) | 0;
-          if (screenY < yBuf[x]) {
-            const cIdx = ((my & MAP_MASK) * MAP + (mx & MAP_MASK)) * 3;
-            let cr = colormap[cIdx], cg = colormap[cIdx+1], cb = colormap[cIdx+2];
-            // Fog blend.
-            const skyIdx = Math.min(VH - 1, Math.max(0, screenY));
-            const sr = sky[skyIdx*3], sg = sky[skyIdx*3+1], sb = sky[skyIdx*3+2];
-            cr = (cr * (1 - fog) + sr * fog) | 0;
-            cg = (cg * (1 - fog) + sg * fog) | 0;
-            cb = (cb * (1 - fog) + sb * fog) | 0;
-            const top = Math.max(0, screenY);
-            const bottom = yBuf[x];
-            for (let y = top; y < bottom; y++) {
-              const j = (y * VW + x) * 4;
-              buf[j] = cr; buf[j+1] = cg; buf[j+2] = cb; buf[j+3] = 255;
-            }
-            yBuf[x] = top;
-          }
-          sx += stepX;
-          sz += stepZ;
-        }
-        z += dz;
-        dz *= 1.005;
-      }
-
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, VW, VH, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+      if (startMs < 0) startMs = t;
+      const tt = (t - startMs) / 1000;
       bindFBO(gl, fbo);
       gl.useProgram(prog);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.uniform1i(uTex, 0);
+      gl.uniform1f(uTime, tt);
+      gl.uniform2f(uRes, VW, VH);
       drawQuad(gl);
     },
     dispose(gl) {
       gl.deleteProgram(prog);
-      gl.deleteTexture(tex);
     },
   };
 }
