@@ -475,22 +475,21 @@ export function starfield(gl) {
 
       // ---- Pass 2: vector sleigh team ----
       const tt = t / 1000;
-      // Looping path: sleigh enters from the right (off-screen) and exits to
-      // the left, then loops every PERIOD seconds. (Reindeer face +X, but
-      // visually it's nicer to fly leftward across the screen, so we mirror
-      // by flipping the X scale below.)
-      //
-      // PHASE_OFFSET shifts the cycle so the sleigh is already on-screen at
-      // t=0 (instead of sitting off-screen right for the first ~1.1s). This
-      // matters because every time the demo re-enters the starfield part
-      // (initial run, demo loop-back, or SPACE-restart), `t` resets to 0 --
-      // without the offset Santa would be invisible for the first second of
-      // every visit, which read as "Santa is missing on the second run".
-      const PERIOD = 9.0;
-      const PHASE_OFFSET = 0.25;
-      const phase01 = (((tt / PERIOD) + PHASE_OFFSET) % 1 + 1) % 1;
-      // Path goes from x = VW + 80 (off right) to x = -100 (off left).
-      const pathX = (VW + 80) + (-(VW + 180)) * phase01;
+      // Sleigh path: linear sweep, right -> left, taking the WHOLE part
+      // duration so the loop never wraps mid-view. The starfield part is
+      // 14s long (see src/timeline.js); we move from just off-screen right
+      // to just off-screen left over ~14s. Because the part transitions
+      // out before we wrap, there's no off-screen "gap" window for users
+      // to land on -- which was the bug where Santa appeared missing on
+      // the second playthrough.
+      const SWEEP_DURATION = 14.0;
+      const u = Math.min(1, tt / SWEEP_DURATION);
+      // Start at pathX = VW + 30 (just off-screen right), end at -30
+      // (just off-screen left). Reindeer extend ~108px to the left of
+      // pathX (with the mirror), so they enter screen first.
+      const pathX = (VW + 30) - (VW + 60) * u;
+      // Reindeer face -X (leftward) the entire sweep.
+      const xSign = -1;
       // Vertical sine swoop, plus a slow drift.
       const pathY = VH * 0.35
         + Math.sin(tt * 1.2) * 18
@@ -533,15 +532,15 @@ export function starfield(gl) {
         throwReleased = true;
         // Hand position in local (sleigh) space at release.
         const [hlx, hly] = santaHandLocal(1.0, tt);
-        // Apply the same world transform we use for the body: mirror X then
-        // translate by (pathX, pathY).
-        const hwx = pathX + (-hlx);
+        // Apply the same world transform we use for the body: x flip is
+        // direction-dependent (xSign), translate by (pathX, pathY).
+        const hwx = pathX + xSign * hlx;
         const hwy = pathY + hly;
         // Throw velocity: a backward-up flick relative to the sleigh's
-        // motion, so the gift appears to be tossed out of the back. The
-        // sleigh moves in -X (leftward), so "backward" relative to motion is
-        // +X. Add the sleigh's own velocity so the gift starts with momentum.
-        const tossVx = sleighVx + 35 + Math.random() * 25;  // toss to the right
+        // motion. "Backward" is the opposite of the direction of travel,
+        // which is -xSign (sleigh's local +X is its forward, but we flip
+        // by xSign to get world-forward).
+        const tossVx = sleighVx - xSign * (35 + Math.random() * 25);
         const tossVy = sleighVy - 50 - Math.random() * 30;  // toss upward (negative y = up)
         const color = GIFT_COLORS[nextColorIdx % GIFT_COLORS.length];
         nextColorIdx++;
@@ -597,10 +596,12 @@ export function starfield(gl) {
         x: dx, y: dy + Math.sin(tt * 3.0 + i * 0.7) * 1.2,
       })));
 
-      // Transform local -> world (mirror X, translate by path).
+      // Transform local -> world. The local geometry is authored facing
+      // +X; we apply `xSign` so the sleigh always faces its direction of
+      // motion. Without this the team appears to "moonwalk" half the time.
       for (let i = 0; i < local.length; i += 6) {
         const lx = local[i], ly = local[i + 1];
-        const wx = pathX + (-lx);
+        const wx = pathX + xSign * lx;
         const wy = pathY + ly;
         verts.push(wx, wy, local[i + 2], local[i + 3], local[i + 4], local[i + 5]);
       }
