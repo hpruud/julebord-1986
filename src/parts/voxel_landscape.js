@@ -131,24 +131,31 @@ vec3 terrainColor(vec3 p) {
   return lit;
 }
 
-// Santa+sleigh silhouette seen from behind. Sleigh at the bottom of the
-// sprite, Santa on top with a hat tip, and the reindeer team rising up
-// into the distance in two staggered columns with perspective shrink.
+// Santa+sleigh seen from behind, drawn as the union of a few analytic
+// shapes with per-shape colors so he reads as Santa in red coat, brown
+// reindeer with tan antlers, dark-red sleigh.
 // q is local aspect-corrected coords with (0,0) at the back of the
 // sleigh. y < 0 = further away (forward in scene), y > 0 = closer to us.
-float santaShape(vec2 q) {
+vec4 santaSprite(vec2 q) {
+  vec3 sleighCol  = vec3(0.40, 0.10, 0.08);
+  vec3 coatCol    = vec3(0.78, 0.14, 0.16);
+  vec3 pomCol     = vec3(0.96, 0.96, 0.98);
+  vec3 deerCol    = vec3(0.32, 0.18, 0.10);
+  vec3 antlerCol  = vec3(0.62, 0.45, 0.28);
+  vec3 reinCol    = vec3(0.10, 0.06, 0.04);
+
+  vec3 col = vec3(0.0);
   float a = 0.0;
-  // Sleigh body (rear view): horizontal oval.
-  vec2 sp = q - vec2(0.0, 0.045);
-  a = max(a, smoothstep(0.050, 0.038, length(sp * vec2(0.70, 1.6))));
-  // Santa sitting in the sleigh.
-  vec2 stp = q - vec2(0.0, 0.015);
-  a = max(a, smoothstep(0.024, 0.018, length(stp * vec2(0.9, 1.0))));
-  // Hat tip leaning slightly forward.
-  vec2 htp = q - vec2(0.008, -0.012);
-  a = max(a, smoothstep(0.014, 0.008, length(htp * vec2(1.3, 0.9))));
-  // Reindeer team: 3 rows of 2, each row smaller and higher (further).
-  for (int i = 0; i < 3; i++) {
+
+  // Reins underneath everything.
+  for (int s = 0; s < 2; s++) {
+    float sx = (float(s) - 0.5) * 2.0 * 0.020;
+    float line = step(abs(q.x - sx), 0.0025) * step(-0.030, q.y) * step(q.y, 0.030);
+    if (line > 0.0) { col = reinCol; a = max(a, line * 0.7); }
+  }
+
+  // Reindeer team: 3 rows of 2, far rows first so near ones overdraw.
+  for (int i = 2; i >= 0; i--) {
     float fi = float(i);
     float persp = 1.0 - fi * 0.22;
     float yPos  = -0.020 - fi * 0.047;
@@ -159,20 +166,36 @@ float santaShape(vec2 q) {
       float sx  = (float(s) - 0.5) * 2.0 * xSep;
       float bob = sin(u_time * 8.0 + fi * 1.3 + float(s) * 0.7) * 0.004 * persp;
       vec2 rp = q - vec2(sx, yPos + bob);
-      a = max(a, smoothstep(r, r * 0.78, length(rp * vec2(1.4, 1.0))));
+      float body = smoothstep(r, r * 0.78, length(rp * vec2(1.4, 1.0)));
+      if (body > 0.0) { col = mix(col, deerCol, body); a = max(a, body); }
       float ant = step(abs(rp.x), r * 0.18)
                 * step(-antH - r, rp.y)
                 * step(rp.y, -r);
-      a = max(a, ant * 0.7);
+      if (ant > 0.0) { col = mix(col, antlerCol, ant); a = max(a, ant * 0.9); }
     }
   }
-  // Two rein lines from sleigh up to the first reindeer row.
-  for (int s = 0; s < 2; s++) {
-    float sx = (float(s) - 0.5) * 2.0 * 0.020;
-    float line = step(abs(q.x - sx), 0.0025) * step(-0.030, q.y) * step(q.y, 0.030);
-    a = max(a, line * 0.5);
-  }
-  return clamp(a, 0.0, 1.0);
+
+  // Sleigh hull.
+  vec2 sp = q - vec2(0.0, 0.045);
+  float sleigh = smoothstep(0.050, 0.038, length(sp * vec2(0.70, 1.6)));
+  if (sleigh > 0.0) { col = mix(col, sleighCol, sleigh); a = max(a, sleigh); }
+
+  // Santa coat (sitting in the sleigh).
+  vec2 stp = q - vec2(0.0, 0.015);
+  float coat = smoothstep(0.024, 0.018, length(stp * vec2(0.9, 1.0)));
+  if (coat > 0.0) { col = mix(col, coatCol, coat); a = max(a, coat); }
+
+  // Hat (red).
+  vec2 htp = q - vec2(0.008, -0.012);
+  float hat = smoothstep(0.014, 0.008, length(htp * vec2(1.3, 0.9)));
+  if (hat > 0.0) { col = mix(col, coatCol, hat); a = max(a, hat); }
+
+  // Hat pom on top.
+  vec2 pp = q - vec2(0.012, -0.022);
+  float pom = smoothstep(0.0055, 0.0035, length(pp));
+  if (pom > 0.0) { col = mix(col, pomCol, pom); a = max(a, pom); }
+
+  return vec4(col, clamp(a, 0.0, 1.0));
 }
 
 void main() {
@@ -236,8 +259,8 @@ void main() {
   sPos.y += sin(u_time * 1.2) * 0.005;
   float sScale = mix(1.30, 0.28, sCycle);
   vec2 sq = (v_uv - sPos) * vec2(u_res.x / u_res.y, 1.0) / sScale;
-  float sA = santaShape(sq);
-  col = mix(col, vec3(0.02, 0.02, 0.04), sA);
+  vec4 sv = santaSprite(sq);
+  col = mix(col, sv.rgb, sv.a);
 
   // Vignette + subtle scanlines.
   vec2 c = v_uv - 0.5;
