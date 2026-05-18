@@ -1,5 +1,5 @@
 // Heightmap water ripple over a procedural pixel image of a snowflake +
-// "JULEBORD" text. Classic 90s PC demo effect: two CPU height buffers
+// "ACADEMY JULEBORD 1986" text. Classic 90s PC demo effect: two CPU height buffers
 // (current and previous) plus the standard (N+S+E+W)/2 - prev integrator
 // with damping. The shader samples the source image with x/y offsets
 // derived from the height gradient to produce refraction.
@@ -36,7 +36,7 @@ void main() {
 }
 `;
 
-// Build the base image once: dark teal background, big snowflake, JULEBORD text.
+// Build the base image once: dark teal background, big snowflake, title text.
 function buildBaseImage() {
   const buf = new Uint8Array(VW * VH * 4);
   for (let i = 0; i < VW * VH; i++) {
@@ -82,16 +82,9 @@ function buildBaseImage() {
       }
     }
   }
-  // Draw "JULEBORD" centered using a tiny 5x7 strokes via simple pixel ops.
+  // Draw the title text centered using tiny 5x7 block-letter glyphs.
   // We avoid pulling in the font atlas to keep this part self-contained;
   // a quick block-letter rasterizer works fine at this resolution.
-  const letters = 'JULEBORD';
-  const scale = 3;
-  const lw = 6 * scale; // letter cell width
-  const lh = 8 * scale;
-  const totalW = letters.length * lw;
-  const startX = ((VW - totalW) / 2) | 0;
-  const ty = VH - 40;
   const stroke = (x, y, w, h, r, g, b) => {
     for (let yy = 0; yy < h; yy++) for (let xx = 0; xx < w; xx++) set(x + xx, y + yy, r, g, b);
   };
@@ -105,18 +98,35 @@ function buildBaseImage() {
     O: ['01110','10001','10001','10001','10001','10001','01110'],
     R: ['11110','10001','10001','11110','10100','10010','10001'],
     D: ['11110','10001','10001','10001','10001','10001','11110'],
+    A: ['01110','10001','10001','11111','10001','10001','10001'],
+    C: ['01110','10001','10000','10000','10000','10001','01110'],
+    M: ['10001','11011','10101','10001','10001','10001','10001'],
+    Y: ['10001','10001','01010','00100','00100','00100','00100'],
+    '1': ['00100','01100','00100','00100','00100','00100','01110'],
+    '9': ['01110','10001','10001','01111','00001','10001','01110'],
+    '8': ['01110','10001','10001','01110','10001','10001','01110'],
+    '6': ['01110','10000','10000','11110','10001','10001','01110'],
+    ' ': ['00000','00000','00000','00000','00000','00000','00000'],
   };
-  for (let i = 0; i < letters.length; i++) {
-    const grid = G[letters[i]];
-    if (!grid) continue;
-    for (let gy = 0; gy < 7; gy++) {
-      for (let gx = 0; gx < 5; gx++) {
-        if (grid[gy][gx] === '1') {
-          stroke(startX + i * lw + gx * scale, ty + gy * scale, scale, scale, 230, 200, 90);
+  const drawLine = (text, scale, ty) => {
+    const lw = 6 * scale;
+    const totalW = text.length * lw;
+    const startX = ((VW - totalW) / 2) | 0;
+    for (let i = 0; i < text.length; i++) {
+      const grid = G[text[i]];
+      if (!grid) continue;
+      for (let gy = 0; gy < 7; gy++) {
+        for (let gx = 0; gx < 5; gx++) {
+          if (grid[gy][gx] === '1') {
+            stroke(startX + i * lw + gx * scale, ty + gy * scale, scale, scale, 230, 200, 90);
+          }
         }
       }
     }
-  }
+  };
+  // Small subtitle on top, big title below.
+  drawLine('ACADEMY', 2, VH - 62);
+  drawLine('JULEBORD 1986', 3, VH - 40);
   return buf;
 }
 
