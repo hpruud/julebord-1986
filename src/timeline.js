@@ -26,6 +26,7 @@ export const TIMELINE = {
     { id: 'tunnel',         dur: 16000, transitionIn: 'fade',  transitionOut: 'flash' },
     { id: 'sinescroller',   dur: 42000, transitionIn: 'fade',  transitionOut: 'fade'  },
     { id: 'vectorcube',     dur: 16000, transitionIn: 'fade',  transitionOut: 'wipe'  },
+    { id: 'wire_tree',      dur: 16000, transitionIn: 'fade',  transitionOut: 'flash' },
     { id: 'battle',         dur: 23000, transitionIn: 'fade',  transitionOut: 'fade'  },
     { id: 'snowglobe',      dur: 14000, transitionIn: 'fade',  transitionOut: 'fade'  },
     { id: 'fireworks',      dur: 16000, transitionIn: 'fade',  transitionOut: 'flash' },
