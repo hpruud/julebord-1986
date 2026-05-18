@@ -12,6 +12,7 @@ in vec2 v_uv;
 out vec4 outColor;
 uniform float u_time;
 uniform vec2 u_res;
+uniform vec2 u_santaOffset;
 
 // --- noise --------------------------------------------------------------
 
@@ -458,6 +459,7 @@ void main() {
   vec2 sPos = mix(sStart, sEnd, sCycle);
   sPos.x += sin(u_time * 0.7) * 0.010;
   sPos.y += sin(u_time * 1.2) * 0.005;
+  sPos += u_santaOffset;
   float sScale = mix(1.30, 0.28, sCycle);
   vec2 sq = (v_uv - sPos) * vec2(u_res.x / u_res.y, 1.0) / sScale;
   vec4 sv = santaSprite(sq);
@@ -477,19 +479,48 @@ export function voxel_landscape(gl) {
   const prog = createProgram(gl, VS_FULLSCREEN, FS);
   const uTime = gl.getUniformLocation(prog, 'u_time');
   const uRes  = gl.getUniformLocation(prog, 'u_res');
+  const uSantaOffset = gl.getUniformLocation(prog, 'u_santaOffset');
   let startMs = -1;
+  let lastMs = -1;
+
+  // Player-controlled Santa offset (uv space). Arrow keys nudge sPos so the
+  // viewer can steer Santa around the scene while the loop animation runs.
+  const keys = { ArrowLeft: false, ArrowRight: false, ArrowUp: false, ArrowDown: false };
+  let ox = 0, oy = 0;
+  const SPEED = 0.4; // uv units per second
+  const MAX = 0.45;
+  const onKeyDown = (e) => {
+    if (e.code in keys) { keys[e.code] = true; e.preventDefault(); }
+  };
+  const onKeyUp = (e) => {
+    if (e.code in keys) { keys[e.code] = false; e.preventDefault(); }
+  };
+  window.addEventListener('keydown', onKeyDown);
+  window.addEventListener('keyup', onKeyUp);
 
   return {
     render(gl, t, fbo) {
-      if (startMs < 0) startMs = t;
+      if (startMs < 0) { startMs = t; lastMs = t; }
+      const dt = Math.max(0, Math.min(0.1, (t - lastMs) / 1000));
+      lastMs = t;
       const tt = (t - startMs) / 1000;
+      let dx = 0, dy = 0;
+      if (keys.ArrowLeft)  dx -= 1;
+      if (keys.ArrowRight) dx += 1;
+      if (keys.ArrowUp)    dy -= 1; // uv y grows downward in our convention
+      if (keys.ArrowDown)  dy += 1;
+      ox = Math.max(-MAX, Math.min(MAX, ox + dx * SPEED * dt));
+      oy = Math.max(-MAX, Math.min(MAX, oy + dy * SPEED * dt));
       bindFBO(gl, fbo);
       gl.useProgram(prog);
       gl.uniform1f(uTime, tt);
       gl.uniform2f(uRes, VW, VH);
+      gl.uniform2f(uSantaOffset, ox, oy);
       drawQuad(gl);
     },
     dispose(gl) {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
       gl.deleteProgram(prog);
     },
   };
