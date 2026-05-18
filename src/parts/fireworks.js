@@ -103,10 +103,12 @@ export function fireworks(gl) {
         const j = (y * VW + x) * 4;
 
         // Two-stage halo: cool wide + bright tight, additive over the sky.
-        const tw = Math.max(0, 1 - r / HALO_WIDE);
-        const tt2 = Math.max(0, 1 - r / HALO_TIGHT);
-        const haloWide  = tw * tw;            // smoothstep-ish falloff
-        const haloTight = tt2 * tt2;
+        // Match battle's `smoothstep(outer, MOON_R, r)` cubic falloff so the
+        // halo intensity reaches ~1 right at the moon's edge, not ~0.5.
+        const tw = Math.max(0, Math.min(1, (HALO_WIDE  - r) / (HALO_WIDE  - MOON_R)));
+        const tt2= Math.max(0, Math.min(1, (HALO_TIGHT - r) / (HALO_TIGHT - MOON_R)));
+        const haloWide  = tw  * tw  * (3 - 2 * tw);
+        const haloTight = tt2 * tt2 * (3 - 2 * tt2);
         const ar = (haloWide * 0.55 * 0.10 + haloTight * 0.85 * 0.18) * 255;
         const ag = (haloWide * 0.62 * 0.10 + haloTight * 0.90 * 0.18) * 255;
         const ab = (haloWide * 0.78 * 0.10 + haloTight * 1.00 * 0.18) * 255;
