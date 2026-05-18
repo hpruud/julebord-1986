@@ -24,28 +24,31 @@ void main() {
 
 function coneEdges(cy, radius, height, segs) {
   // Returns array of [ax,ay,az, bx,by,bz, r,g,b].
-  const apexY = cy + height;
-  const verts = [];
+  // A tier is rendered as a single horizontal ring at its base. Stacked rings
+  // read clearly as a stylized Christmas tree without spoke clutter.
+  // `height` and the apex are no longer drawn; kept in the signature so callers
+  // don't change.
+  void height;
+  const out = [];
+  const hue = Math.min(1, cy / 90);
+  const r = (40 + hue * 60) | 0;
+  const g = (170 + hue * 60) | 0;
+  const b = (70 + hue * 90) | 0;
+  const ring = [];
   for (let i = 0; i < segs; i++) {
     const a = (i / segs) * Math.PI * 2;
-    verts.push([Math.cos(a) * radius, cy, Math.sin(a) * radius]);
+    ring.push([Math.cos(a) * radius, cy, Math.sin(a) * radius]);
   }
-  const out = [];
-  // Tier color: greener at base, brighter teal toward top.
-  const hue = Math.min(1, cy / 90);
-  const r = (30 + hue * 40) | 0;
-  const g = (140 + hue * 80) | 0;
-  const b = (50 + hue * 90) | 0;
-  // Spokes apex -> each bottom vert.
-  for (const v of verts) {
-    out.push([0, apexY, 0, v[0], v[1], v[2], r, g, b]);
-  }
-  // Ring connecting bottom verts.
-  for (let i = 0; i < verts.length; i++) {
-    const a = verts[i], b2 = verts[(i + 1) % verts.length];
+  for (let i = 0; i < segs; i++) {
+    const a = ring[i], b2 = ring[(i + 1) % segs];
     out.push([a[0], a[1], a[2], b2[0], b2[1], b2[2], r, g, b]);
   }
   return out;
+}
+
+function trunkEdges(yTop, yBot, color) {
+  // Vertical brown trunk connecting the bottom tier to the ground.
+  return [[0, yBot, 0, 0, yTop, 0, color[0], color[1], color[2]]];
 }
 
 function cubeEdges(cx, cy, cz, size, color) {
@@ -124,14 +127,16 @@ export function wire_tree(gl) {
     }
   })();
 
-  // Build edge list once.
+  // Build edge list once. Stacked horizontal rings (branch silhouettes) +
+  // brown trunk + star above the top ring.
   const edges = [];
-  edges.push(...coneEdges( 0, 50, 22, 14));
-  edges.push(...coneEdges(22, 38, 22, 12));
-  edges.push(...coneEdges(44, 28, 22, 10));
-  edges.push(...coneEdges(66, 18, 22, 8));
-  // Star at top (above last tier apex).
-  edges.push(...star3D(0, 92, 0, 16, [255, 240, 140]));
+  edges.push(...coneEdges( 0, 50, 0, 24));
+  edges.push(...coneEdges(18, 40, 0, 22));
+  edges.push(...coneEdges(36, 30, 0, 18));
+  edges.push(...coneEdges(54, 20, 0, 14));
+  edges.push(...coneEdges(72, 10, 0, 10));
+  edges.push(...trunkEdges(0, -16, [120, 70, 40]));
+  edges.push(...star3D(0, 90, 0, 12, [255, 235, 130]));
 
   // Per-frame: gifts orbit. Each gift gets its own animated edge set.
   const giftColors = [
@@ -148,21 +153,22 @@ export function wire_tree(gl) {
   }
 
   function thickLine(x0, y0, x1, y1, r, g, b) {
-    // Bresenham, but plot a 2px-thick line by doubling on the minor axis.
-    let dx =  Math.abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
-    let dy = -Math.abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
-    let err = dx + dy;
-    let x = x0 | 0, y = y0 | 0;
-    const xe = x1 | 0, ye = y1 | 0;
-    const xMajor = dx > -dy;
-    for (let i = 0; i < 1000; i++) {
+    // DDA with a precomputed step count. Endpoints are floats from project(),
+    // so the classical Bresenham `x===xe && y===ye` termination is unreliable
+    // (truncated targets can be over- or under-stepped and the loop runs away).
+    const ix0 = x0 | 0, iy0 = y0 | 0;
+    const ix1 = x1 | 0, iy1 = y1 | 0;
+    const dxi = ix1 - ix0, dyi = iy1 - iy0;
+    const n = Math.max(Math.abs(dxi), Math.abs(dyi));
+    if (n === 0) { plot(ix0, iy0, r, g, b); return; }
+    const xMajor = Math.abs(dxi) >= Math.abs(dyi);
+    for (let i = 0; i <= n; i++) {
+      const t = i / n;
+      const x = (x0 + (x1 - x0) * t) | 0;
+      const y = (y0 + (y1 - y0) * t) | 0;
       plot(x, y, r, g, b);
       if (xMajor) plot(x, y + 1, r, g, b);
       else        plot(x + 1, y, r, g, b);
-      if (x === xe && y === ye) break;
-      const e2 = err * 2;
-      if (e2 >= dy) { err += dy; x += sx; }
-      if (e2 <= dx) { err += dx; y += sy; }
     }
   }
   const line = thickLine;
@@ -176,27 +182,24 @@ export function wire_tree(gl) {
       buf.set(scene);
 
       // View / projection: tree spins about Y; slight tilt about X.
-      const ang = tt * 0.55;
-      const tilt = Math.sin(tt * 0.4) * 0.18;
+      const ang = tt * 0.35;
+      const tilt = Math.sin(tt * 0.4) * 0.08;
       const cosA = Math.cos(ang),  sinA = Math.sin(ang);
       const cosT = Math.cos(tilt), sinT = Math.sin(tilt);
       // Camera distance from origin (along +Z, looking down -Z toward origin),
-      // recentered so tree (origin..y=92) sits nicely.
-      const camZ = 220;
-      const camY = 45;
+      // framed so the gifts and tree (y in [-12 .. 92]) sit on screen.
+      const camZ = 230;
+      const camY = 38;
       const f   = 240; // focal length (pixels per unit at z=1)
 
       function project(p) {
         let x = p[0], y = p[1], z = p[2];
-        // Rotate Y.
         const rx = x * cosA + z * sinA;
         const rz = -x * sinA + z * cosA;
         x = rx; z = rz;
-        // Tilt X (rotate y,z).
         const ry = y * cosT - z * sinT;
         const rz2 = y * sinT + z * cosT;
         y = ry; z = rz2;
-        // Translate to camera frame.
         y -= camY;
         z = camZ - z;
         if (z < 5) return null;
@@ -205,15 +208,16 @@ export function wire_tree(gl) {
         return [sx, sy, z];
       }
 
-      // Build the dynamic gift edges this frame.
+      // Build the dynamic gift edges this frame. Presents sit on a slow
+      // turntable below the tree base, well clear of the lowest tier.
       const dynamic = [];
       for (let i = 0; i < 8; i++) {
-        const phase = (i / 8) * Math.PI * 2 + tt * 0.7;
-        const orbitR = 70;
+        const phase = (i / 8) * Math.PI * 2 + tt * 0.35;
+        const orbitR = 64;
         const cx = Math.cos(phase) * orbitR;
         const cz = Math.sin(phase) * orbitR;
-        const cy = 16 + Math.sin(tt * 1.1 + i) * 18 + (i % 3) * 12;
-        const size = 9 + Math.sin(tt * 1.5 + i * 0.7) * 2.5;
+        const cy = -8 + Math.sin(tt * 0.9 + i) * 1.5;
+        const size = 8 + (i % 3);
         dynamic.push(...cubeEdges(cx, cy, cz, size, giftColors[i]));
       }
 
