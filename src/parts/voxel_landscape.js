@@ -61,12 +61,12 @@ function buildHeightmap() {
 }
 
 function colorFor(h) {
-  // Returns [r,g,b]. h in 0..255.
-  if (h < 50)  return [40, 70, 110];               // dark valley shadow
-  if (h < 90)  return [60, 95, 70];                // pine
-  if (h < 130) return [120, 140, 110];             // exposed slope
-  if (h < 170) return [200, 210, 220];             // snow line
-  return [240, 248, 255];                          // peak
+  // Returns [r,g,b]. h in 0..255. Punched-up Christmas-night palette.
+  if (h < 50)  return [20, 40, 90];                // deep valley shadow
+  if (h < 90)  return [40, 110, 60];               // saturated pine
+  if (h < 130) return [150, 150, 130];             // rocky slope
+  if (h < 170) return [220, 230, 240];             // snow line
+  return [255, 255, 255];                          // peak
 }
 
 export function voxel_landscape(gl) {

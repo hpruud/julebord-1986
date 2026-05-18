@@ -1,7 +1,7 @@
-// Santa multiplexer: classic Amiga sprite-multiplexer effect. Two stacked
-// rows of tiny Santa-sleigh sprites ride sine waves across the screen, over
-// a slow-scrolling starfield. Pre-rasterized sprite gets blitted many times
-// per frame into a CPU buffer.
+// Santa multiplexer: classic Amiga sprite-multiplexer effect. Three stacked
+// rows of bold pixel-art Christmas stars / Santa medallions ride sine waves
+// across a slow-scrolling starfield. A single sprite is pre-rasterized once
+// and blitted many times per frame into a CPU buffer.
 import { createProgram, VS_FULLSCREEN, VW, VH } from '../gl/context.js';
 import { drawQuad } from '../gl/quad.js';
 import { bindFBO } from '../gl/framebuffer.js';
@@ -13,44 +13,56 @@ out vec4 outColor;
 uniform sampler2D u_tex;
 void main() {
   vec3 col = texture(u_tex, v_uv).rgb;
-  // Subtle scanlines for retro feel.
+  // Subtle scanlines.
   float scan = 0.92 + 0.08 * sin(v_uv.y * float(${VH}) * 3.14159);
   col *= scan;
+  // Soft vignette.
+  vec2 c = v_uv - 0.5;
+  col *= mix(0.55, 1.0, 1.0 - smoothstep(0.55, 0.95, length(c)));
   outColor = vec4(col, 1.0);
 }
 `;
 
-// Sprite dimensions.
-const SW = 32, SH = 12;
+// 5-point pixel-art Christmas star with a santa-red center dot. Reads
+// instantly at small size and tints well per copy.
+const SW = 16, SH = 16;
+const SPRITE_RECIPES = [
+  // Mostly-yellow festive star.
+  { outline: [40, 30, 5], fill: [255, 215, 60], center: [240, 60, 60], glow: [255, 240, 160] },
+  // Snow-white star.
+  { outline: [30, 50, 80], fill: [245, 248, 255], center: [220, 40, 50], glow: [200, 220, 255] },
+  // Pine-green star.
+  { outline: [10, 40, 20], fill: [120, 220, 90], center: [255, 220, 80], glow: [180, 240, 160] },
+  // Christmas-red star.
+  { outline: [40, 10, 15], fill: [240, 70, 80], center: [255, 220, 80], glow: [255, 180, 180] },
+];
 
-function buildSprite() {
-  // Tiny pixel-art Santa sleigh + 2 reindeer. 0 alpha = transparent.
-  // Encoded as a 32x12 array of color codes:
-  //   . = transparent, R = red, P = pink, K = black, W = white,
-  //   B = brown, G = green leaves, Y = yellow rein/nose
+function buildSprite(recipe) {
+  // 16x16 5-point star. Hand-tuned bitmap (O outline, F fill, G glow, C center).
   const art = [
-    "................................",
-    "..............RRRR..............",
-    ".............RWWWR..............",
-    ".....BB.....RWPPWR..............",
-    "..BBBBBBB..RRWWWWR..............",
-    ".BWWWWWWB.RYRRRRRR..BB...BB.....",
-    "BWWPPPPWWBYY.....RR.BBB.BBB.....",
-    "BWWWWWWWWB.......RR.B.B.B.B.....",
-    ".BBBBBBBB........RRYBBBYBBB.....",
-    "..K.....K.........YYY.YYY.......",
-    "..K.....K.........Y...Y.........",
-    "................................",
+    "........FF......",
+    ".......FFFF.....",
+    ".......FGGF.....",
+    "FFFFFFFGGGFFFFFF",
+    "FFGGGGGGCGGGGGFF",
+    "FOGGGGGCCCGGGGOF",
+    ".OOGGGGCCCGGGOO.",
+    "...OOGGGGGGGOO..",
+    "....OGGGGGGGO...",
+    "...OOGFFGGFFGO..",
+    "..OOGFF.OO.FFGOO",
+    ".OOGFF..OO..FFGO",
+    "OOGF....OO....FG",
+    "OF......OO......",
+    "F.......O.......",
+    "........O.......",
   ];
   const map = {
-    '.': [0,0,0,0],
-    'R': [220,40,50,255],
-    'P': [250,200,200,255],
-    'K': [20,20,20,255],
-    'W': [240,240,240,255],
-    'B': [110,55,20,255],
-    'G': [60,160,60,255],
-    'Y': [255,210,80,255],
+    '.': [0, 0, 0, 0],
+    'O': [...recipe.outline, 255],
+    'F': [...recipe.fill,    255],
+    'G': [...recipe.glow,    255],
+    'C': [...recipe.center,  255],
   };
   const buf = new Uint8Array(SW * SH * 4);
   for (let y = 0; y < SH; y++) {
@@ -69,7 +81,7 @@ export function santa_multiplex(gl) {
   const uTex = gl.getUniformLocation(prog, 'u_tex');
 
   const buf = new Uint8Array(VW * VH * 4);
-  const sprite = buildSprite();
+  const sprites = SPRITE_RECIPES.map(buildSprite);
 
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -79,11 +91,11 @@ export function santa_multiplex(gl) {
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-  // Pre-render stars at fixed positions (slow horizontal scroll via offset).
-  const N_STARS = 120;
+  // Background stars.
+  const N_STARS = 140;
   const starX = new Float32Array(N_STARS);
   const starY = new Float32Array(N_STARS);
-  const starL = new Uint8Array(N_STARS); // layer 1..3
+  const starL = new Uint8Array(N_STARS);
   for (let i = 0; i < N_STARS; i++) {
     starX[i] = Math.random() * VW;
     starY[i] = Math.random() * VH;
@@ -93,11 +105,11 @@ export function santa_multiplex(gl) {
   function plotStar(x, y, layer) {
     if (x < 0 || x >= VW || y < 0 || y >= VH) return;
     const j = ((y | 0) * VW + (x | 0)) * 4;
-    const c = layer === 1 ? 220 : layer === 2 ? 170 : 110;
-    buf[j] = c; buf[j+1] = c; buf[j+2] = Math.min(255, c + 20); buf[j+3] = 255;
+    const c = layer === 1 ? 230 : layer === 2 ? 175 : 110;
+    buf[j] = c; buf[j+1] = c; buf[j+2] = Math.min(255, c + 25); buf[j+3] = 255;
   }
 
-  function blitSprite(dstX, dstY) {
+  function blitSprite(sprite, dstX, dstY) {
     const x0 = dstX | 0, y0 = dstY | 0;
     for (let sy = 0; sy < SH; sy++) {
       const dy = y0 + sy;
@@ -117,7 +129,12 @@ export function santa_multiplex(gl) {
   }
 
   let tt = 0, lastT = 0;
-  const COUNT_PER_ROW = 12;
+  // Three rows of sprites at different phases / scroll speeds.
+  const ROWS = [
+    { baseY: VH * 0.22, count: 7, speed:  34, amp: 26, freq: 1.3, phase: 0 },
+    { baseY: VH * 0.50, count: 8, speed: -28, amp: 32, freq: 1.6, phase: Math.PI },
+    { baseY: VH * 0.78, count: 7, speed:  22, amp: 22, freq: 1.1, phase: Math.PI * 0.5 },
+  ];
 
   return {
     render(gl, t, fbo) {
@@ -125,18 +142,18 @@ export function santa_multiplex(gl) {
       lastT = t;
       tt += dt;
 
-      // Clear with dark blue sky gradient.
+      // Deep blue night sky gradient.
       for (let y = 0; y < VH; y++) {
         const ty = y / VH;
-        const r = (6 + ty * 14) | 0;
-        const g = (8 + ty * 10) | 0;
-        const b = (28 + ty * 30) | 0;
+        const r = (4 + ty * 14) | 0;
+        const g = (6 + ty * 10) | 0;
+        const b = (28 + ty * 38) | 0;
         for (let x = 0; x < VW; x++) {
           const j = (y * VW + x) * 4;
           buf[j] = r; buf[j+1] = g; buf[j+2] = b; buf[j+3] = 255;
         }
       }
-      // Stars: scroll based on layer.
+      // Parallax stars.
       for (let i = 0; i < N_STARS; i++) {
         const layer = starL[i];
         const off = tt * (8 + layer * 6);
@@ -145,25 +162,20 @@ export function santa_multiplex(gl) {
         plotStar(x, starY[i], layer);
       }
 
-      // Two rows of sprite copies sliding L->R along sine waves.
-      const baseY1 = VH * 0.30;
-      const baseY2 = VH * 0.60;
-      const spacing = VW / COUNT_PER_ROW;
-      const scroll1 =  tt * 26.0;
-      const scroll2 = -tt * 22.0;
-      for (let i = 0; i < COUNT_PER_ROW; i++) {
-        const phase = i / COUNT_PER_ROW * Math.PI * 2;
-        // Row 1.
-        let x1 = ((i * spacing + scroll1) % (VW + SW)) - SW;
-        if (x1 < -SW) x1 += VW + SW;
-        const y1 = baseY1 + Math.sin(tt * 1.4 + phase * 2) * 36 - SH / 2;
-        blitSprite(x1, y1);
-        // Row 2 (offset phase + opposite scroll).
-        let x2 = (VW + SW) - (((i * spacing - scroll2) % (VW + SW)) + SW);
-        if (x2 < -SW) x2 += VW + SW;
-        if (x2 >= VW) x2 -= VW + SW;
-        const y2 = baseY2 + Math.sin(tt * 1.6 + phase * 2 + Math.PI) * 30 - SH / 2;
-        blitSprite(x2, y2);
+      // Sprite rows.
+      for (let r = 0; r < ROWS.length; r++) {
+        const row = ROWS[r];
+        const spacing = (VW + SW) / row.count;
+        for (let i = 0; i < row.count; i++) {
+          const sprIdx = (i + r) % sprites.length;
+          const sprite = sprites[sprIdx];
+          let x = ((i * spacing + tt * row.speed) % (VW + SW * 2)) - SW;
+          while (x < -SW) x += VW + SW * 2;
+          while (x > VW)  x -= VW + SW * 2;
+          const localPhase = (i / row.count) * Math.PI * 2 + row.phase;
+          const y = row.baseY + Math.sin(tt * row.freq + localPhase) * row.amp - SH / 2;
+          blitSprite(sprite, x, y);
+        }
       }
 
       gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -181,3 +193,4 @@ export function santa_multiplex(gl) {
     },
   };
 }
+
