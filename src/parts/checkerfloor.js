@@ -14,13 +14,17 @@ uniform sampler2D u_palette;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 
 void main() {
-  // v_uv.y = 0 at bottom, 1 at top of the framebuffer.
+  // After the final display blit, v_uv.y == 1 is the BOTTOM of the screen
+  // and v_uv.y == 0 is the TOP. Flip into a screen-space y where
+  // sy == 0 is the bottom and sy == 1 is the top so the floor/horizon math
+  // below reads naturally.
+  float sy = 1.0 - v_uv.y;
   // Horizon sits slightly above center; everything above is sky.
   float horizon = 0.55;
   vec3 col;
-  if (v_uv.y > horizon) {
+  if (sy > horizon) {
     // Sky: dark blue gradient + sparse stars + a soft horizon glow.
-    float t = (v_uv.y - horizon) / (1.0 - horizon);
+    float t = (sy - horizon) / (1.0 - horizon);
     col = mix(vec3(0.05, 0.04, 0.18), vec3(0.0, 0.0, 0.04), t);
     // Horizon glow (warm).
     col += vec3(0.45, 0.18, 0.20) * exp(-t * 12.0) * 0.6;
@@ -35,9 +39,9 @@ void main() {
   } else {
     // Floor: project the pixel onto an infinite checker plane.
     // Camera at height h looking forward; floor at y=0.
-    // d = h / (horizon - v_uv.y) gives distance forward to that pixel.
+    // d = h / (horizon - sy) gives distance forward to that pixel.
     float h = 1.0;
-    float dy = horizon - v_uv.y;            // 0 at horizon, grows toward bottom
+    float dy = horizon - sy;                // 0 at horizon, grows toward bottom
     float dist = h / max(dy, 0.0008);
     // World x: spread across screen, scaled by distance for perspective.
     float wx = (v_uv.x - 0.5) * dist * 2.2;
