@@ -53,19 +53,23 @@ function buildHeightmap() {
         freq *= 2;
       }
       const v = sum / norm;
-      // Pinch the low end so valleys stay flat (snowy floor look).
-      h[y * MAP + x] = Math.min(255, Math.max(0, ((v * 255) | 0)));
+      // Contrast-stretch around 0.5 and compress the top so peaks stay
+      // below the camera height (avoids the "wall of terrain right in
+      // front of the camera" bug).
+      let s = (v - 0.5) * 1.6 + 0.45;
+      s = Math.max(0, Math.min(0.6, s));
+      h[y * MAP + x] = (s * 255) | 0;
     }
   }
   return h;
 }
 
 function colorFor(h) {
-  // Returns [r,g,b]. h in 0..255. Punched-up Christmas-night palette.
-  if (h < 50)  return [20, 40, 90];                // deep valley shadow
-  if (h < 90)  return [40, 110, 60];               // saturated pine
-  if (h < 130) return [150, 150, 130];             // rocky slope
-  if (h < 170) return [220, 230, 240];             // snow line
+  // Returns [r,g,b]. h in 0..153 after clamping. Christmas-night palette.
+  if (h < 35)  return [20, 40, 90];                // deep valley shadow
+  if (h < 65)  return [40, 110, 60];               // saturated pine
+  if (h < 95)  return [150, 150, 130];             // rocky slope
+  if (h < 120) return [220, 230, 240];             // snow line
   return [255, 255, 255];                          // peak
 }
 
@@ -141,9 +145,9 @@ export function voxel_landscape(gl) {
       const camX = Math.sin(tt * 0.25) * 18.0;
       const camAng = Math.sin(tt * 0.18) * 0.20;
       const cosA = Math.cos(camAng), sinA = Math.sin(camAng);
-      const camH = 60;
-      const horizon = VH * 0.55;
-      const scaleHeight = 140;
+      const camH = 160;
+      const horizon = VH * 0.52;
+      const scaleHeight = 200;
 
       for (let x = 0; x < VW; x++) yBuf[x] = VH;
 
