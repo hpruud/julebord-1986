@@ -124,8 +124,8 @@ function buildBaseImage() {
       }
     }
   };
-  // Small subtitle on top, big title below.
-  drawLine('ACADEMY', 2, VH - 62);
+  // Top subtitle above the snowflake, big title below it.
+  drawLine('ACADEMY', 3, 8);
   drawLine('JULEBORD 1986', 3, VH - 40);
   return buf;
 }
