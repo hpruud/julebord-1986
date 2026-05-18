@@ -483,9 +483,11 @@ export function starfield(gl) {
       // screen within a frame or two. This fixes the "Santa missing on
       // the second playthrough" bug, which was caused by an off-screen
       // start window plus loop-wrap timing.
-      const SWEEP_DUR = 7.0;        // seconds per right->left pass (was 9.0)
-      const PRELOAD   = 1.4;        // shift cycle so Santa is on-screen at tt=0
-      const cycT = ((tt + PRELOAD) % SWEEP_DUR + SWEEP_DUR) % SWEEP_DUR;
+      const SWEEP_DUR = 7.0;        // seconds per right->left pass
+      // No preload: Santa starts fully off-screen right and flies in.
+      // Safe because we hard-reload between demo runs, so every entry to
+      // this part begins with tt=0 and a fresh closure.
+      const cycT = ((tt) % SWEEP_DUR + SWEEP_DUR) % SWEEP_DUR;
       const u = cycT / SWEEP_DUR;
       // pathX goes from VW+30 (just off right) to -30 (just off left).
       const pathX = (VW + 30) - (VW + 60) * u;
