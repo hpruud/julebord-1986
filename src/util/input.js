@@ -25,7 +25,8 @@ export function initInput() {
     switch (e.code) {
       case 'Space':
         e.preventDefault();
-        fire('skip');
+        if (!bootDismissed) { dismissBoot(); fire('start'); }
+        else { fire('skip'); }
         break;
       case 'KeyP':
         fire('pause');
@@ -47,13 +48,28 @@ export function initInput() {
     }
   });
 
+  // Left mouse click: start the demo if still on the boot screen, otherwise
+  // skip to the next part (same as Space).
+  window.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    if (!bootDismissed) { dismissBoot(); fire('start'); }
+    else { fire('skip'); }
+  });
+
   const boot = document.getElementById('boot');
   if (boot) {
     boot.addEventListener('click', () => {
-      boot.style.display = 'none';
-      fire('start');
+      if (!bootDismissed) { dismissBoot(); fire('start'); }
     }, { once: true });
   }
+}
+
+let bootDismissed = false;
+function dismissBoot() {
+  if (bootDismissed) return;
+  bootDismissed = true;
+  const boot = document.getElementById('boot');
+  if (boot) boot.style.display = 'none';
 }
 
 export function toggleFullscreen() {
