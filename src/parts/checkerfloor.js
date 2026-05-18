@@ -72,7 +72,9 @@ void main() {
     float JUMP_PERIOD = 1.2;
     float jumpIdx = floor(u_time / JUMP_PERIOD);
     float jumpT   = fract(u_time / JUMP_PERIOD);
-    float BZ      = 3.8;
+    // Depth oscillation: ball surges forward and back so it grows and
+    // shrinks on screen as it tracks toward and away from the camera.
+    float BZ      = 4.2 + sin(u_time * 0.9) * 1.6;
     float R       = 0.75;
     float bxNow   = (hash(vec2(jumpIdx, 7.3)) - 0.5) * 4.4;
     float bxPrev  = (hash(vec2(jumpIdx - 1.0, 7.3)) - 0.5) * 4.4;
@@ -96,7 +98,7 @@ void main() {
     float JUMP_PERIOD = 1.2;
     float jumpIdx = floor(u_time / JUMP_PERIOD);
     float jumpT   = fract(u_time / JUMP_PERIOD);
-    float BZ      = 3.8;
+    float BZ      = 4.2 + sin(u_time * 0.9) * 1.6;
     float R       = 0.75;
     float bxNow   = (hash(vec2(jumpIdx, 7.3)) - 0.5) * 4.4;
     float bxPrev  = (hash(vec2(jumpIdx - 1.0, 7.3)) - 0.5) * 4.4;
@@ -105,7 +107,7 @@ void main() {
     float jumpH   = 0.8 + hash(vec2(jumpIdx, 11.7)) * 0.4;
     float by      = R + bounceN * jumpH;
 
-    // Project ball center to screen-space. Center placement still uses the
+    // Project ball center to screen-space.Center placement still uses the
     // floor's perspective so the ball sits believably in the scene, but the
     // SHAPE is measured in pixels so it stays perfectly round regardless of
     // the viewport aspect ratio.
