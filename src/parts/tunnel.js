@@ -19,7 +19,7 @@ void main() {
 
   // Tunnel coords.
   float u = a / 3.14159 * 5.0 + u_time * 0.25;
-  float v = 1.0 / max(r, 0.015) + u_time * 0.85;
+  float v = 1.0 / max(r, 0.015) + u_time * 2.0;
 
   // Brick-checker pattern (offset rows for masonry feel).
   float row = floor(v);
