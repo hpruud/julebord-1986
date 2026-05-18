@@ -37,22 +37,20 @@ const SPRITE_RECIPES = [
   { outline: [40, 10, 15], fill: [240, 70, 80], center: [255, 220, 80], glow: [255, 180, 180] },
 ];
 
-function buildSprite(recipe) {
+function buildSprite(recipe, rotation) {
   // Geometrically correct regular 5-point star, rasterized at runtime.
-  // Outer points sit on a circle of radius Router; inner vertices sit on
-  // a circle of radius Router / phi^2 (the golden-ratio star), which is
-  // the only inner radius that produces a star with straight, equal arms.
+  // `rotation` rotates the star vertices in the source bitmap so we can
+  // pre-bake multiple frames for a spinning effect. The upper-left glow
+  // lobe stays in screen-space so it reads like a fixed light source.
   const cx = SW / 2, cy = SH / 2;
   const Router = SW / 2 - 0.5;
   const PHI = (1 + Math.sqrt(5)) / 2;
   const Rinner = Router / (PHI * PHI);
 
-  // 10 vertices, alternating outer/inner, starting from the top point and
-  // going clockwise. -PI/2 puts vertex 0 straight up.
   const verts = [];
   for (let k = 0; k < 10; k++) {
     const r = (k % 2 === 0) ? Router : Rinner;
-    const a = -Math.PI / 2 + k * Math.PI / 5;
+    const a = -Math.PI / 2 + k * Math.PI / 5 + rotation;
     verts.push([cx + r * Math.cos(a), cy + r * Math.sin(a)]);
   }
 
@@ -114,7 +112,16 @@ export function santa_multiplex(gl) {
   const uTex = gl.getUniformLocation(prog, 'u_tex');
 
   const buf = new Uint8Array(VW * VH * 4);
-  const sprites = SPRITE_RECIPES.map(buildSprite);
+  // Pre-bake NROT rotated frames per recipe for a smooth spin without
+  // re-rasterizing every frame.
+  const NROT = 24;
+  const sprites = SPRITE_RECIPES.map((recipe) => {
+    const frames = new Array(NROT);
+    for (let f = 0; f < NROT; f++) {
+      frames[f] = buildSprite(recipe, (f / NROT) * Math.PI * 2);
+    }
+    return frames;
+  });
 
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -162,11 +169,12 @@ export function santa_multiplex(gl) {
   }
 
   let tt = 0, lastT = 0;
-  // Three rows of sprites at different phases / scroll speeds.
+  // Three rows of sprites at different phases / scroll speeds. `spin` is
+  // radians/sec; alternating signs make adjacent rows counter-rotate.
   const ROWS = [
-    { baseY: VH * 0.22, count: 7, speed:  34, amp: 26, freq: 1.3, phase: 0 },
-    { baseY: VH * 0.50, count: 8, speed: -28, amp: 32, freq: 1.6, phase: Math.PI },
-    { baseY: VH * 0.78, count: 7, speed:  22, amp: 22, freq: 1.1, phase: Math.PI * 0.5 },
+    { baseY: VH * 0.22, count: 7, speed:  34, amp: 26, freq: 1.3, phase: 0,            spin:  2.2 },
+    { baseY: VH * 0.50, count: 8, speed: -28, amp: 32, freq: 1.6, phase: Math.PI,      spin: -1.8 },
+    { baseY: VH * 0.78, count: 7, speed:  22, amp: 22, freq: 1.1, phase: Math.PI * 0.5, spin:  2.6 },
   ];
 
   return {
@@ -201,7 +209,12 @@ export function santa_multiplex(gl) {
         const spacing = (VW + SW) / row.count;
         for (let i = 0; i < row.count; i++) {
           const sprIdx = (i + r) % sprites.length;
-          const sprite = sprites[sprIdx];
+          const frames = sprites[sprIdx];
+          // Per-sprite phase so they don't all spin in lockstep.
+          const spinPhase = (i * 0.37 + r * 1.1) * Math.PI;
+          let frame = Math.floor(((tt * row.spin + spinPhase) / (Math.PI * 2)) * NROT);
+          frame = ((frame % NROT) + NROT) % NROT;
+          const sprite = frames[frame];
           let x = ((i * spacing + tt * row.speed) % (VW + SW * 2)) - SW;
           while (x < -SW) x += VW + SW * 2;
           while (x > VW)  x -= VW + SW * 2;
