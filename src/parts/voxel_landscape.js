@@ -54,20 +54,50 @@ float terrain(vec2 p) {
 }
 
 vec3 skyColor(vec3 rd, vec2 moonNDC) {
-  // Vertical night-sky gradient.
+  // Vertical night-sky gradient: darker at the zenith, slightly warmer
+  // near the horizon. rd.y > 0 means looking up at sky.
   float t = clamp(rd.y * 0.5 + 0.5, 0.0, 1.0);
-  vec3 col = mix(vec3(0.03, 0.04, 0.10), vec3(0.10, 0.12, 0.28), t);
-  // Stars (only above the horizon).
-  if (rd.y > 0.0) {
-    vec2 sp = rd.xz / max(0.05, rd.y) * 4.0;
-    float s = step(0.992, hash(floor(sp * 40.0)));
-    col += vec3(s) * (0.8 + 0.2 * sin(u_time * 3.0 + hash(floor(sp * 40.0)) * 30.0));
+  vec3 col = mix(vec3(0.10, 0.12, 0.28), vec3(0.03, 0.04, 0.10), t);
+  // Stars: spherical mapping of the ray direction onto a stable 2D star
+  // field, so they don't slide with camera motion in a weird grid pattern.
+  if (rd.y > 0.02) {
+    vec2 sp = vec2(atan(rd.x, rd.z), rd.y);
+    vec2 g  = sp * vec2(40.0, 60.0);
+    vec2 gi = floor(g);
+    vec2 gf = fract(g) - 0.5;
+    float r = hash(gi);
+    // Only ~3% of cells get a star.
+    float on = step(0.97, r);
+    // Star sits at a sub-cell offset so they don't grid-align.
+    vec2 off = (vec2(hash(gi + 7.7), hash(gi + 3.3)) - 0.5) * 0.7;
+    float d  = length(gf - off);
+    float core = smoothstep(0.06, 0.0, d) * on;
+    // Subtle twinkle.
+    float tw = 0.6 + 0.4 * sin(u_time * 2.5 + r * 30.0);
+    col += vec3(0.95, 0.97, 1.0) * core * tw;
+    // Sparse big stars on a coarser grid.
+    vec2 gB  = sp * vec2(14.0, 22.0);
+    vec2 giB = floor(gB);
+    vec2 gfB = fract(gB) - 0.5;
+    float rB = hash(giB + 1.3);
+    float onB = step(0.985, rB);
+    float dB  = length(gfB);
+    float coreB = smoothstep(0.12, 0.0, dB) * onB;
+    col += vec3(1.0, 0.95, 0.85) * coreB * (0.7 + 0.3 * sin(u_time * 1.7 + rB * 20.0));
   }
-  // Moon disc.
-  float moon = smoothstep(0.06, 0.05, length(v_uv - moonNDC));
-  float halo = smoothstep(0.18, 0.06, length(v_uv - moonNDC));
-  col += vec3(1.0, 0.97, 0.85) * moon;
-  col += vec3(0.4, 0.45, 0.55) * halo * 0.35;
+  // Full moon: a soft, slightly textured disc with a warm halo.
+  vec2 mp = (v_uv - moonNDC) * vec2(u_res.x / u_res.y, 1.0);
+  float mr = length(mp);
+  float disc = smoothstep(0.075, 0.065, mr);
+  float rim  = smoothstep(0.080, 0.072, mr) - smoothstep(0.072, 0.065, mr);
+  // Faint maria texture so it doesn't read as a flat circle.
+  float maria = vnoise(mp * 60.0) * 0.15 + vnoise(mp * 25.0) * 0.10;
+  vec3 moonCol = vec3(0.98, 0.96, 0.88) - vec3(maria) * disc;
+  col = mix(col, moonCol, disc);
+  col += vec3(1.0, 0.95, 0.80) * rim * 0.6;
+  // Wide soft halo.
+  float halo = smoothstep(0.30, 0.075, mr);
+  col += vec3(0.55, 0.62, 0.80) * halo * halo * 0.18;
   return col;
 }
 
