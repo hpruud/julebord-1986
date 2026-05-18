@@ -27,6 +27,7 @@ import { kaleido } from './kaleido.js';
 import { fireworks } from './fireworks.js';
 import { santa_multiplex } from './santa_multiplex.js';
 import { wire_tree } from './wire_tree.js';
+import { voxel_landscape } from './voxel_landscape.js';
 
 export const parts = {
   plasma,
@@ -58,4 +59,5 @@ export const parts = {
   fireworks,
   santa_multiplex,
   wire_tree,
+  voxel_landscape,
 };
