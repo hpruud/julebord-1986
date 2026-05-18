@@ -27,6 +27,7 @@ export const TIMELINE = {
     { id: 'vectorcube',     dur: 16000, transitionIn: 'fade',  transitionOut: 'wipe'  },
     { id: 'battle',         dur: 23000, transitionIn: 'fade',  transitionOut: 'fade'  },
     { id: 'snowglobe',      dur: 14000, transitionIn: 'fade',  transitionOut: 'fade'  },
+    { id: 'fireworks',      dur: 16000, transitionIn: 'fade',  transitionOut: 'flash' },
     { id: 'outro_credits',  dur: 13000, transitionIn: 'fade',  transitionOut: 'fade'  },
   ],
 };

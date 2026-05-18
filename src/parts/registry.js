@@ -24,6 +24,7 @@ import { checkerfloor } from './checkerfloor.js';
 import { waterripple } from './waterripple.js';
 import { snowglobe } from './snowglobe.js';
 import { kaleido } from './kaleido.js';
+import { fireworks } from './fireworks.js';
 
 export const parts = {
   plasma,
@@ -52,4 +53,5 @@ export const parts = {
   waterripple,
   snowglobe,
   kaleido,
+  fireworks,
 };
